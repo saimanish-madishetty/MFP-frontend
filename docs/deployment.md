@@ -55,7 +55,10 @@ npx prisma migrate deploy
 
 Note: free Supabase projects pause after 7 days without activity. The UptimeRobot check in step 3 prevents this, because `/health` queries the database.
 
-## 2. Render (backend)
+## 2. Render (backend) ✅ done
+
+Live at **https://mfp-backend.onrender.com** (service `mfp-backend`, Singapore, Free). `CORS_ORIGINS` = `https://mfp-frontend-omega.vercel.app,https://localhost`.
+
 
 The service is defined in **`render.yaml`** in the backend repo (a Render Blueprint): Singapore region, free plan, build and start commands, `/health` check, Node 24. Only the secrets are entered by hand.
 
@@ -82,7 +85,12 @@ Every push to `main` redeploys the backend and applies any new database migratio
 
 Render's free service sleeps after about 15 minutes idle, and the first request after that takes 30–60 seconds. The monitor keeps it awake, and Render's 750 free hours a month are enough to run one service non-stop.
 
-## 4. Vercel (web app)
+## 4. Vercel (web app) ✅ done
+
+Live at **https://mfp-frontend-omega.vercel.app** (project `mfp-frontend`, team MFP, Hobby plan), connected to GitHub: every push to `main` redeploys. `NEXT_PUBLIC_API_URL` = `https://mfp-backend.onrender.com` (Production). The other generated addresses (`…-mfp9.vercel.app`, `…-git-main-…`) ask for a Vercel login; use the `-omega` one.
+
+On the work laptop, `vercel deploy` from the terminal fails (Zscaler breaks the upload), so deploy by pushing to GitHub instead.
+
 
 Build settings are in **`vercel.json`** in the frontend repo: build with `npm run build`, serve the static `out/` folder as-is (framework preset "Other", so the export fix in `fix-export-segments` is kept), and redirect `/stock` to `/stock/`.
 
