@@ -1,0 +1,233 @@
+"use client";
+
+import Link from "next/link";
+import useSWR from "swr";
+import { Badge, ErrorBox } from "@/components/ui";
+import { formatDay, formatINR } from "@/lib/format";
+import { saleStatus, type SaleListItem } from "@/lib/sales";
+import { formatQty, type StockOverview, type Unit } from "@/lib/stock";
+
+type WorkersOverview = {
+  date: string;
+  activeWorkers: number;
+  markedToday: number;
+  totalPayable: string;
+  payDue: { id: number; name: string; payable: string }[];
+};
+
+type SalesOverview = {
+  today: { amount: string; count: number };
+  month: { amount: string; count: number };
+  recent: SaleListItem[];
+};
+
+type BuyersOverview = { buyers: number; outstanding: string; overdueAmount: string; overdueBuyers: number };
+
+type ProductsOverview = {
+  products: number;
+  outOfStock: number;
+  stock: { id: number; internalName: string; currentQty: string; saleUnit: Unit }[];
+};
+
+function StatCard({
+  label,
+  value,
+  href,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  href: string;
+  hint?: string;
+  tone?: "red";
+}) {
+  return (
+    <Link href={href} className="rounded-xl border border-border bg-surface p-4 hover:border-brand">
+      <p className="text-xs text-muted">{label}</p>
+      <p
+        className={`mt-1 text-2xl font-semibold tabular-nums ${tone === "red" ? "text-red-600 dark:text-red-400" : ""}`}
+      >
+        {value}
+      </p>
+      {hint && <p className="mt-1 truncate text-xs text-muted">{hint}</p>}
+    </Link>
+  );
+}
+
+const QUICK_ACTIONS = [
+  { label: "New sale", href: "/sales/new/", icon: "M12 5v14M5 12h14" },
+  {
+    label: "Add production",
+    href: "/production/",
+    icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+  },
+  { label: "View stock", href: "/stock/", icon: "M4 6h16M4 12h16M4 18h16" },
+  {
+    label: "Add buyer",
+    href: "/buyers/new/",
+    icon: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6",
+  },
+];
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-medium text-muted">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+export default function DashboardPage() {
+  const { data: sales, error } = useSWR<SalesOverview>("/sales/overview");
+  const { data: buyers } = useSWR<BuyersOverview>("/buyers/overview");
+  const { data: products } = useSWR<ProductsOverview>("/products/overview");
+  const { data: w } = useSWR<WorkersOverview>("/workers/overview");
+  const { data: s } = useSWR<StockOverview>("/stock/overview");
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6">
+      <h1 className="text-2xl font-semibold">Dashboard</h1>
+
+      {/* Hot keys: the actions used most often. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {QUICK_ACTIONS.map((a) => (
+          <Link
+            key={a.href}
+            href={a.href}
+            className="flex min-h-20 flex-col items-center justify-center gap-1.5 rounded-xl border border-border bg-surface p-3 text-center font-medium hover:border-brand hover:text-brand"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-6 w-6 text-brand"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d={a.icon} />
+            </svg>
+            <span className="text-sm">{a.label}</span>
+          </Link>
+        ))}
+      </div>
+
+      <ErrorBox error={error} />
+
+      <Section title="Sales & payments">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Sales today"
+            value={sales ? formatINR(sales.today.amount) : "—"}
+            href="/sales/"
+            hint={sales ? `${sales.today.count} invoice${sales.today.count === 1 ? "" : "s"}` : undefined}
+          />
+          <StatCard
+            label="This month"
+            value={sales ? formatINR(sales.month.amount) : "—"}
+            href="/sales/"
+            hint={sales ? `${sales.month.count} invoices` : undefined}
+          />
+          <StatCard label="To collect" value={buyers ? formatINR(buyers.outstanding) : "—"} href="/buyers/" />
+          <StatCard
+            label="Overdue"
+            value={buyers ? formatINR(buyers.overdueAmount) : "—"}
+            href="/sales/"
+            tone={buyers && Number(buyers.overdueAmount) > 0 ? "red" : undefined}
+            hint={
+              buyers && buyers.overdueBuyers > 0
+                ? `${buyers.overdueBuyers} buyer${buyers.overdueBuyers > 1 ? "s" : ""}`
+                : undefined
+            }
+          />
+        </div>
+        {sales && sales.recent.length > 0 && (
+          <ul className="divide-y divide-border rounded-xl border border-border bg-surface text-sm">
+            {sales.recent.map((r) => {
+              const st = saleStatus(r);
+              return (
+                <li key={r.id}>
+                  <Link
+                    href={`/sales/detail/?id=${r.id}`}
+                    className="flex items-center gap-3 px-4 py-2.5 hover:text-brand"
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {r.buyerName} <span className="text-xs text-muted">· {formatDay(r.date, { year: false })}</span>
+                    </span>
+                    <span className="tabular-nums">{formatINR(r.grandTotal)}</span>
+                    <Badge tone={st.tone}>{st.label}</Badge>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Section>
+
+      <Section title="Stock">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Production today"
+            value={s ? (s.dayEndDoneToday ? "Done ✓" : "Not entered") : "—"}
+            href="/production/"
+            hint={
+              s && !s.dayEndDoneToday && s.lastDayEndOn
+                ? `Last: ${formatDay(s.lastDayEndOn, { year: false })}`
+                : undefined
+            }
+          />
+          <StatCard
+            label="Low materials"
+            value={s ? String(s.lowStock.length + s.negativeStock.length) : "—"}
+            href="/stock/"
+            tone={s && s.negativeStock.length > 0 ? "red" : undefined}
+            hint={[...(s?.negativeStock ?? []), ...(s?.lowStock ?? [])].map((m) => m.name).join(", ") || undefined}
+          />
+          <StatCard
+            label="Products out of stock"
+            value={products ? String(products.outOfStock) : "—"}
+            href="/stock/?tab=products"
+            tone={products && products.outOfStock > 0 ? "red" : undefined}
+          />
+          <Link
+            href="/stock/?tab=products"
+            className="col-span-2 rounded-xl border border-border bg-surface p-4 text-sm hover:border-brand lg:col-span-1"
+          >
+            <p className="text-xs text-muted">Ready stock</p>
+            {products?.stock.length ? (
+              products.stock.slice(0, 4).map((p) => (
+                <p key={p.id} className="mt-1 flex justify-between gap-2">
+                  <span className="truncate">{p.internalName}</span>
+                  <span className="shrink-0 tabular-nums">{formatQty(p.currentQty, p.saleUnit)}</span>
+                </p>
+              ))
+            ) : (
+              <p className="mt-1 text-muted">—</p>
+            )}
+          </Link>
+        </div>
+      </Section>
+
+      <Section title="Workers">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Attendance today"
+            value={w ? `${w.markedToday} / ${w.activeWorkers}` : "—"}
+            href="/workers/"
+            hint={w && w.markedToday < w.activeWorkers ? "Tap to mark" : undefined}
+          />
+          <StatCard label="Wages owed now" value={w ? formatINR(w.totalPayable) : "—"} href="/workers/?tab=list" />
+          <StatCard
+            label="Pay due"
+            value={w ? String(w.payDue.length) : "—"}
+            href="/workers/?tab=list"
+            hint={w?.payDue.map((p) => p.name).join(", ") || undefined}
+          />
+        </div>
+      </Section>
+    </div>
+  );
+}

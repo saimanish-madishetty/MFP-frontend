@@ -1,0 +1,40 @@
+{
+  "name": "mfp-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build && node scripts/fix-export-segments.mjs",
+    "start": "next start -p 3001",
+    "lint": "eslint",
+    "android:sync": "npm run build && cap sync android",
+    "android:run": "npm run android:sync && cap run android --no-sync",
+    "android:live": "cap run android --live-reload --host localhost --port 3001 --forwardPorts 3001:3001",
+    "android:open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
+    "next": "16.4.3",
+    "pdfmake": "^0.3.12",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "swr": "^2.5.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.3",
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/pdfmake": "^0.3.3",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.3",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

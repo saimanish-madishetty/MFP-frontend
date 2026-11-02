@@ -1,0 +1,180 @@
+"use client";
+
+import { useState } from "react";
+import useSWR from "swr";
+import { api } from "@/lib/api";
+import { INDIAN_STATES } from "@/lib/buyers";
+import type { CompanyProfile } from "@/lib/sales";
+import { Button, Card, ErrorBox, Field, Input, Loading, PageHeader, Select, Textarea } from "@/components/ui";
+
+type Form = Record<keyof CompanyProfile, string | boolean | number>;
+
+function CompanyForm({ company, onSaved }: { company: CompanyProfile; onSaved: () => void }) {
+  const [f, setF] = useState<CompanyProfile>(company);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const text = (k: keyof CompanyProfile) => ({
+    value: (f[k] as string | null) ?? "",
+    onChange: (e: { target: { value: string } }) => {
+      setSaved(false);
+      setF((p) => ({ ...p, [k]: e.target.value }));
+    },
+  });
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const body = Object.fromEntries(
+      Object.entries(f)
+        .filter(([k]) => !["id", "updatedAt", "logoUrl"].includes(k))
+        .map(([k, v]) => [k, typeof v === "string" ? v.trim() || null : v]),
+    ) as Form;
+    body.defaultCreditDays = Number(f.defaultCreditDays);
+    try {
+      await api("/settings/company", "PUT", body);
+      setSaved(true);
+      onSaved();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <Card className="space-y-4 p-4">
+        <h2 className="font-semibold">Business</h2>
+        <Field label="Business name">
+          <Input required {...text("businessName")} />
+        </Field>
+        <Field label="Address">
+          <Textarea {...text("address")} />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="City">
+            <Input {...text("city")} />
+          </Field>
+          <Field label="Pincode">
+            <Input inputMode="numeric" {...text("pincode")} />
+          </Field>
+        </div>
+        <Field label="State">
+          <Select {...text("state")}>
+            <option value="">—</option>
+            {INDIAN_STATES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Phone">
+            <Input type="tel" {...text("phone")} />
+          </Field>
+          <Field label="Email">
+            <Input type="email" {...text("email")} />
+          </Field>
+        </div>
+      </Card>
+
+      <Card className="space-y-4 p-4">
+        <h2 className="font-semibold">GST & licences</h2>
+        <Field label="GSTIN" hint="Leave blank if not GST-registered: invoices become plain bills without GST.">
+          <Input className="uppercase" maxLength={15} {...text("gstin")} />
+        </Field>
+        <Field label="FSSAI licence number">
+          <Input {...text("fssaiNumber")} />
+        </Field>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={f.pricesIncludeGst}
+            onChange={(e) => {
+              setSaved(false);
+              setF((p) => ({ ...p, pricesIncludeGst: e.target.checked }));
+            }}
+          />
+          <span>
+            <span className="font-medium">My prices include GST</span>
+            <span className="block text-xs text-muted">
+              If ticked, GST is taken out of the rate. If not, GST is added on top.
+            </span>
+          </span>
+        </label>
+      </Card>
+
+      <Card className="space-y-4 p-4">
+        <h2 className="font-semibold">Payments to you</h2>
+        <Field label="UPI ID" hint="Printed on invoices with a QR code for the amount due">
+          <Input placeholder="name@bank" {...text("upiId")} />
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Bank name">
+            <Input {...text("bankName")} />
+          </Field>
+          <Field label="Account name">
+            <Input {...text("bankAccountName")} />
+          </Field>
+          <Field label="Account number">
+            <Input inputMode="numeric" {...text("bankAccountNumber")} />
+          </Field>
+          <Field label="IFSC">
+            <Input className="uppercase" {...text("bankIfsc")} />
+          </Field>
+        </div>
+        <Field label="Default credit period (days)" hint="How long buyers have to pay. Can be changed per buyer.">
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={365}
+            required
+            value={String(f.defaultCreditDays)}
+            onChange={(e) => {
+              setSaved(false);
+              setF((p) => ({ ...p, defaultCreditDays: Number(e.target.value) }));
+            }}
+          />
+        </Field>
+      </Card>
+
+      <Card className="space-y-4 p-4">
+        <h2 className="font-semibold">Invoice</h2>
+        <Field label="Invoice number prefix" hint="Numbers look like MF/2026-27/0001">
+          <Input required maxLength={10} {...text("invoicePrefix")} />
+        </Field>
+        <Field label="Terms printed on invoices">
+          <Textarea rows={3} {...text("termsText")} />
+        </Field>
+        <Field label="Signatory name" hint="Shown under the signature line">
+          <Input {...text("signatoryName")} />
+        </Field>
+      </Card>
+
+      <ErrorBox error={error} />
+      <div className="flex items-center justify-end gap-3 pb-4">
+        {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved ✓</span>}
+        <Button type="submit" size="lg" disabled={saving}>
+          {saving ? "Saving…" : "Save settings"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+export default function SettingsPage() {
+  const { data, error, mutate } = useSWR<CompanyProfile>("/settings/company");
+  return (
+    <div className="mx-auto max-w-2xl">
+      <PageHeader title="Settings" subtitle="Your business details, printed on every invoice." />
+      <ErrorBox error={error} />
+      {!data && !error && <Loading />}
+      {data && <CompanyForm company={data} onSaved={() => mutate()} />}
+    </div>
+  );
+}

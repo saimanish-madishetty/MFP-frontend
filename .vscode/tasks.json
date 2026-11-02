@@ -1,0 +1,235 @@
+// Tasks for the whole MFP project (frontend, backend, DB, Android).
+// Backend paths assume MFP-backend sits next to this repo (C:\MFP\MFP-backend).
+{
+	"version": "2.0.0",
+	"tasks": [
+		// ---------- Database (Postgres in Docker) ----------
+		{
+			"label": "DB: Start",
+			"type": "shell",
+			"command": "npm run db:up",
+			"options": { "cwd": "${workspaceFolder}/../MFP-backend" },
+			"problemMatcher": []
+		},
+		{
+			"label": "DB: Stop",
+			"type": "shell",
+			"command": "npm run db:down",
+			"options": { "cwd": "${workspaceFolder}/../MFP-backend" },
+			"problemMatcher": []
+		},
+		{
+			"label": "DB: Migrate",
+			"type": "shell",
+			"command": "npm run db:migrate",
+			"options": { "cwd": "${workspaceFolder}/../MFP-backend" },
+			"dependsOn": ["DB: Start"],
+			"problemMatcher": []
+		},
+		{
+			"label": "DB: Studio",
+			"type": "shell",
+			"command": "npm run db:studio",
+			"options": { "cwd": "${workspaceFolder}/../MFP-backend" },
+			"isBackground": true,
+			"problemMatcher": []
+		},
+
+		// ---------- Backend (NestJS) ----------
+		{
+			"label": "Backend: Dev",
+			"type": "shell",
+			"command": "npm run start:dev",
+			"options": { "cwd": "${workspaceFolder}/../MFP-backend" },
+			"dependsOn": ["DB: Start"],
+			"isBackground": true,
+			"problemMatcher": {
+				"owner": "nest",
+				"pattern": { "regexp": "^__never_matches__$" },
+				"background": {
+					"activelyMatching": true,
+					"beginsPattern": "Starting compilation|File change detected",
+					"endsPattern": "Found \\d+ errors?|Nest application successfully started"
+				}
+			}
+		},
+		{
+			"label": "Backend: Build",
+			"type": "shell",
+			"command": "npm run build",
+			"options": { "cwd": "${workspaceFolder}/../MFP-backend" },
+			"group": "build",
+			"problemMatcher": "$tsc"
+		},
+
+		// ---------- Frontend (Next.js) ----------
+		{
+			"label": "Frontend: Dev",
+			"type": "shell",
+			"command": "npm run dev",
+			"options": { "cwd": "${workspaceFolder}" },
+			"isBackground": true,
+			"problemMatcher": {
+				"owner": "next",
+				"pattern": { "regexp": "^__never_matches__$" },
+				"background": {
+					"activelyMatching": true,
+					"beginsPattern": "Next\\.js",
+					"endsPattern": "Ready in"
+				}
+			}
+		},
+		{
+			"label": "Frontend: Build",
+			"type": "shell",
+			"command": "npm run build",
+			"options": { "cwd": "${workspaceFolder}" },
+			"group": "build",
+			"problemMatcher": []
+		},
+
+		// ---------- Android (Capacitor) ----------
+		{
+			// Lets the app on the emulator/phone reach the backend at localhost:4001.
+			"label": "Android: Forward backend port",
+			"type": "shell",
+			"command": "adb reverse tcp:4001 tcp:4001",
+			"problemMatcher": []
+		},
+		{
+			"label": "Android: Live reload",
+			"type": "shell",
+			"command": "npm run android:live",
+			"options": { "cwd": "${workspaceFolder}" },
+			"dependsOn": ["Frontend: Dev", "Android: Forward backend port"],
+			"problemMatcher": []
+		},
+		{
+			"label": "Android: Run on device",
+			"type": "shell",
+			"command": "npm run android:run",
+			"options": { "cwd": "${workspaceFolder}" },
+			"dependsOn": ["Android: Forward backend port"],
+			"problemMatcher": []
+		},
+		{
+			"label": "Android: Sync",
+			"type": "shell",
+			"command": "npm run android:sync",
+			"options": { "cwd": "${workspaceFolder}" },
+			"problemMatcher": []
+		},
+		{
+			// Copies the existing out/ build into android/ without rebuilding Next.js.
+			"label": "Android: Copy web build",
+			"type": "shell",
+			"command": "npx cap sync android",
+			"options": { "cwd": "${workspaceFolder}" },
+			"problemMatcher": []
+		},
+		{
+			// Output: MFP-frontend/android/app/build/outputs/apk/debug/app-debug.apk
+			"label": "Android: Build debug APK",
+			"type": "shell",
+			"command": ".\\gradlew.bat assembleDebug",
+			"options": { "cwd": "${workspaceFolder}/android" },
+			"dependsOn": ["Android: Copy web build"],
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Android: Open in Android Studio",
+			"type": "shell",
+			"command": "npm run android:open",
+			"options": { "cwd": "${workspaceFolder}" },
+			"problemMatcher": []
+		},
+
+		// ---------- Full stack: 5 terminals ----------
+		// 1 Prerequisites and 2 Database run first, one after the other. Then 3-5 open together, and each
+		// waits for the port of the one before it: backend (4001) -> frontend (3001) -> Android.
+		// Waiting on ports (not on log text) means a step only starts once its server really answers.
+		{
+			// Starts Docker, frees ports 3001/4001 (MFP processes only), installs deps, creates .env, checks JDK/adb.
+			"label": "Stack 1/5: Prerequisites",
+			"type": "shell",
+			"command": "& '${workspaceFolder}/scripts/dev-prereqs.ps1'",
+			"options": { "cwd": "${workspaceFolder}", "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"] } },
+			"presentation": { "panel": "dedicated", "reveal": "always", "clear": true, "showReuseMessage": false },
+			"problemMatcher": []
+		},
+		{
+			"label": "Stack 2/5: Database",
+			"hide": true,
+			"type": "shell",
+			"command": "npm run db:up; if ($?) { npm run db:migrate }",
+			"options": { "cwd": "${workspaceFolder}/../MFP-backend", "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-Command"] } },
+			"presentation": { "panel": "dedicated", "reveal": "always", "clear": true, "showReuseMessage": false },
+			"problemMatcher": []
+		},
+		{
+			"label": "Stack 3/5: Backend",
+			"hide": true,
+			"type": "shell",
+			"command": "npm run start:dev",
+			"options": { "cwd": "${workspaceFolder}/../MFP-backend", "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-Command"] } },
+			"presentation": { "panel": "dedicated", "reveal": "always", "clear": true, "showReuseMessage": false },
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Stack 4/5: Frontend",
+			"hide": true,
+			"type": "shell",
+			"command": "& '${workspaceFolder}/scripts/wait-port.ps1' -Port 4001 -Name backend; if ($?) { npm run dev }",
+			"options": { "cwd": "${workspaceFolder}", "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"] } },
+			"presentation": { "panel": "dedicated", "reveal": "always", "clear": true, "showReuseMessage": false },
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			// Boots an emulator if no device is connected (while the servers start), waits for the frontend,
+			// forwards the backend port (adb reverse), then starts live reload.
+			"label": "Stack 5/5: Android live reload",
+			"hide": true,
+			"type": "shell",
+			"command": "& '${workspaceFolder}/scripts/dev-android.ps1'",
+			"options": { "cwd": "${workspaceFolder}", "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"] } },
+			"presentation": { "panel": "dedicated", "reveal": "always", "focus": true, "clear": true, "showReuseMessage": false },
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Stack: Servers",
+			"hide": true,
+			"dependsOn": ["Stack 3/5: Backend", "Stack 4/5: Frontend", "Stack 5/5: Android live reload"],
+			"problemMatcher": []
+		},
+		{
+			"label": "Start: Full stack (5 terminals)",
+			"dependsOrder": "sequence",
+			"dependsOn": ["Stack 1/5: Prerequisites", "Stack 2/5: Database", "Stack: Servers"],
+			"group": { "kind": "build", "isDefault": true },
+			"problemMatcher": []
+		},
+
+		// ---------- Everything ----------
+		{
+			"label": "Run: All (DB + backend + frontend)",
+			"dependsOn": ["Backend: Dev", "Frontend: Dev"],
+			"problemMatcher": []
+		},
+		{
+			"label": "Run: All + Android live reload",
+			"dependsOn": ["Backend: Dev", "Android: Live reload"],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build: All (backend + frontend + APK)",
+			"dependsOrder": "sequence",
+			"dependsOn": ["Backend: Build", "Frontend: Build", "Android: Build debug APK"],
+			"group": "build",
+			"problemMatcher": []
+		}
+	]
+}
