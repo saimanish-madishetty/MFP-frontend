@@ -9,7 +9,7 @@ import { whatsappLink } from "@/lib/buyers";
 import { formatDay, formatINR, todayIST } from "@/lib/format";
 import { invoiceFileName, invoicePdf } from "@/lib/invoice-pdf";
 import { amountInWords, saleStatus, type CompanyProfile, type SaleDetail } from "@/lib/sales";
-import { downloadBlob, sharePdf } from "@/lib/share";
+import { savePdf, sharePdf } from "@/lib/share";
 import { formatQty, unitShort } from "@/lib/stock";
 import { PAYMENT_MODES, type PaymentMode } from "@/lib/workers";
 import {
@@ -158,6 +158,7 @@ function SaleDetailView() {
   const [sheet, setSheet] = useState<"paid" | "cancel" | null>(null);
   const [pdfBusy, setPdfBusy] = useState<"share" | "download" | null>(null);
   const [pdfError, setPdfError] = useState<unknown>(null);
+  const [pdfSaved, setPdfSaved] = useState<string | null>(null);
 
   if (error) return <ErrorBox error={error} />;
   if (!s || !company) return <Loading />;
@@ -170,12 +171,16 @@ function SaleDetailView() {
   const pdfAction = async (action: "share" | "download") => {
     setPdfBusy(action);
     setPdfError(null);
+    setPdfSaved(null);
     try {
       const pdf = await invoicePdf(s, company);
       const blob = await pdf.getBlob();
       const fileName = invoiceFileName(s);
-      if (action === "download") downloadBlob(blob, fileName);
-      else await sharePdf({ blob, base64: await pdf.getBase64(), fileName, text: messageText(s, company) });
+      const base64 = await pdf.getBase64();
+      if (action === "download") {
+        const where = await savePdf({ blob, base64, fileName });
+        if (where.startsWith("Saved")) setPdfSaved(where);
+      } else await sharePdf({ blob, base64, fileName, text: messageText(s, company) });
     } catch (e) {
       setPdfError(e);
     } finally {
@@ -237,6 +242,11 @@ function SaleDetailView() {
         )}
       </div>
       <ErrorBox error={pdfError} />
+      {pdfSaved && (
+        <p className="rounded-lg bg-green-500/15 px-3 py-2 text-sm text-green-700 dark:text-green-400">
+          {pdfSaved}. Open it from the Files app.
+        </p>
+      )}
 
       {/* Invoice preview (public names only, like the PDF) */}
       <Card className="overflow-hidden">
