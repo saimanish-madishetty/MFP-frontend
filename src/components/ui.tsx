@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useBackClose } from "@/lib/back-stack";
 import { BackLink } from "./BackLink";
+import { Dropdown, type DropdownProps } from "./Dropdown";
 import { addDays, formatDay, todayIST } from "@/lib/format";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -110,8 +111,9 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={inputClass(props.className)} />;
 }
 
-export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={inputClass(props.className)} />;
+/** The app's dropdown (see Dropdown.tsx): takes `<option>` children like a `<select>`. */
+export function Select(props: DropdownProps) {
+  return <Dropdown {...props} />;
 }
 
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
