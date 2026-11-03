@@ -20,6 +20,7 @@ export default function BuyersPage() {
       (b) =>
         !term ||
         b.name.toLowerCase().includes(term) ||
+        b.invoiceName?.toLowerCase().includes(term) ||
         b.city?.toLowerCase().includes(term) ||
         b.phone?.includes(term),
     )

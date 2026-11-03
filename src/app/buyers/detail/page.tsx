@@ -77,6 +77,7 @@ function BuyerDetailView() {
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             {[b.contactPerson, b.city, b.state].filter(Boolean).join(" · ")}
+            {b.invoiceName && b.invoiceName !== b.name && <span>Invoice name: {b.invoiceName}</span>}
             {b.gstin && <Badge>GSTIN {b.gstin}</Badge>}
             {!b.active && <Badge>Archived</Badge>}
           </span>

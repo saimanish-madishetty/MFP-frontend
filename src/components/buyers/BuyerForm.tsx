@@ -14,6 +14,7 @@ export function BuyerForm({ buyer }: { buyer?: Buyer }) {
   const { data: company } = useSWR<CompanyProfile>("/settings/company");
   const [f, setF] = useState({
     name: buyer?.name ?? "",
+    invoiceName: buyer?.invoiceName ?? "",
     contactPerson: buyer?.contactPerson ?? "",
     phone: buyer?.phone ?? "",
     altPhone: buyer?.altPhone ?? "",
@@ -39,6 +40,7 @@ export function BuyerForm({ buyer }: { buyer?: Buyer }) {
     const text = (v: string) => v.trim() || null;
     const body = {
       name: f.name.trim(),
+      invoiceName: text(f.invoiceName),
       contactPerson: text(f.contactPerson),
       phone: text(f.phone),
       altPhone: text(f.altPhone),
@@ -71,6 +73,12 @@ export function BuyerForm({ buyer }: { buyer?: Buyer }) {
       <Card className="space-y-4 p-4">
         <Field label="Shop / business name">
           <Input required value={f.name} onChange={set("name")} autoFocus={!buyer} />
+        </Field>
+        <Field
+          label="Name on invoice"
+          hint="Registered name printed on invoices, e.g. as on their GST certificate. Leave blank to use the name above."
+        >
+          <Input value={f.invoiceName} onChange={set("invoiceName")} placeholder={f.name.trim() || undefined} />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Contact person">

@@ -11,6 +11,8 @@ export type BuyerSummary = {
 export type Buyer = {
   id: number;
   name: string;
+  /** Name printed on invoices; null = same as name */
+  invoiceName: string | null;
   contactPerson: string | null;
   phone: string | null;
   altPhone: string | null;
