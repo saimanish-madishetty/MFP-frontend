@@ -7,6 +7,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import { formatDay, formatINR, todayIST } from "@/lib/format";
 import { PRODUCT_MOVEMENT_LABEL, formatStock, perUnit, type ProductDetail } from "@/lib/products";
+import { DeleteForever } from "@/components/DeleteForever";
 import { formatQty, unitShort, type ProductWastage, type Unit, type WastageLine } from "@/lib/stock";
 import {
   Badge,
@@ -364,7 +365,7 @@ function ProductDetailView() {
         )}
       </Card>
 
-      <div className="flex justify-center pb-4">
+      <div className="flex flex-wrap justify-center gap-2 pb-4">
         <Button
           variant={p.active ? "ghost" : "secondary"}
           size="sm"
@@ -372,6 +373,17 @@ function ProductDetailView() {
         >
           {p.active ? "Archive product (no longer sold)" : "Restore product"}
         </Button>
+        <DeleteForever
+          name={p.internalName}
+          path={`/products/${p.id}`}
+          then="/products/"
+          refresh={(k) => k.startsWith("/products") || k.startsWith("/stock")}
+        >
+          <p>
+            This permanently deletes <strong>{p.internalName}</strong> with its stock history and recipe. Raw materials
+            already used for it stay in material stock. A product that is on an invoice can&apos;t be deleted.
+          </p>
+        </DeleteForever>
       </div>
 
       {adjusting && <AdjustSheet product={p} onClose={() => setAdjusting(false)} />}

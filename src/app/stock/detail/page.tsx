@@ -10,6 +10,7 @@ import { MOVEMENT_LABEL, TYPE_LABEL, formatQty, unitShort, type MaterialDetail }
 import { Badge, Button, ButtonLink, Card, ErrorBox, Loading, PageHeader, Row } from "@/components/ui";
 import { StockBadge, qtyTone } from "@/components/stock/StockBadge";
 import { AdjustSheet, PurchaseSheet } from "@/components/stock/StockSheets";
+import { DeleteForever } from "@/components/DeleteForever";
 
 function MaterialDetailView() {
   const id = useSearchParams().get("id");
@@ -153,7 +154,7 @@ function MaterialDetailView() {
         )}
       </Card>
 
-      <div className="flex justify-center pb-4">
+      <div className="flex flex-wrap justify-center gap-2 pb-4">
         {m.active ? (
           <Button variant="ghost" size="sm" onClick={() => setActive(false)}>
             Archive material (no longer used)
@@ -163,6 +164,17 @@ function MaterialDetailView() {
             Restore material
           </Button>
         )}
+        <DeleteForever
+          name={m.name}
+          path={`/materials/${m.id}`}
+          then={m.type === "SUPPLY" ? "/stock/?tab=supply" : "/stock/"}
+          refresh={(k) => k.startsWith("/materials") || k.startsWith("/stock") || k.startsWith("/products")}
+        >
+          <p>
+            This permanently deletes <strong>{m.name}</strong> with all its purchases, usage and adjustments, and
+            removes it from product recipes.
+          </p>
+        </DeleteForever>
       </div>
 
       {sheet === "purchase" && <PurchaseSheet material={m} onClose={() => setSheet(null)} />}
