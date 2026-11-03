@@ -7,6 +7,7 @@ import { formatDay, formatINR } from "@/lib/format";
 import { saleStatus, type SaleListItem } from "@/lib/sales";
 import { formatStock, type Pack } from "@/lib/products";
 import type { StockOverview, Unit } from "@/lib/stock";
+import type { ExpensesOverview } from "@/lib/expenses";
 
 type WorkersOverview = {
   date: string;
@@ -86,6 +87,7 @@ export default function DashboardPage() {
   const { data: products } = useSWR<ProductsOverview>("/products/overview");
   const { data: w } = useSWR<WorkersOverview>("/workers/overview");
   const { data: s } = useSWR<StockOverview>("/stock/overview");
+  const { data: x } = useSWR<ExpensesOverview>("/expenses/overview");
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -227,6 +229,31 @@ export default function DashboardPage() {
             href="/workers/?tab=list"
             hint={w?.payDue.map((p) => p.name).join(", ") || undefined}
           />
+        </div>
+      </Section>
+
+      <Section title="Expenses & bills">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Spent this month"
+            value={x ? formatINR(x.expensesMonth.amount) : "—"}
+            href="/expenses/"
+            hint={x ? `${x.expensesMonth.count} expense${x.expensesMonth.count === 1 ? "" : "s"} · today ${formatINR(x.expensesToday)}` : undefined}
+          />
+          <StatCard
+            label="Bills to pay (next 7 days)"
+            value={x ? formatINR(x.billsDue.amount) : "—"}
+            href="/expenses/?tab=bills"
+            tone={x && x.billsDue.overdueCount > 0 ? "red" : undefined}
+            hint={
+              x
+                ? x.billsDue.overdueCount > 0
+                  ? `${x.billsDue.overdueCount} overdue · ${formatINR(x.billsDue.overdueAmount)}`
+                  : x.billsDue.next.map((b) => `${b.name} ${formatDay(b.dueDate, { year: false })}`).join(", ") || "Nothing due"
+                : undefined
+            }
+          />
+          <StatCard label="Bills paid this month" value={x ? formatINR(x.billsPaidMonth) : "—"} href="/expenses/?tab=bills" />
         </div>
       </Section>
     </div>
