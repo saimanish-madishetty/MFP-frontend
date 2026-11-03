@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build && node scripts/fix-export-segments.mjs",
+    "build": "next build && node scripts/fix-export-segments.mjs && node scripts/write-version.mjs",
     "start": "next start -p 3001",
     "lint": "eslint",
     "android:sync": "npm run build && cap sync android",
