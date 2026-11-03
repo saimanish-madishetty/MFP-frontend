@@ -38,8 +38,8 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
       discount: Number(l.discount) > 0 ? String(Number(l.discount)) : "",
     })),
   );
-  const [paidNow, setPaidNow] = useState(false);
-  const [paidAmount, setPaidAmount] = useState<string | null>(null);
+  // Amount received with the sale: blank = nothing yet, less than the total = part payment.
+  const [paidAmount, setPaidAmount] = useState("");
   const [paidMode, setPaidMode] = useState<PaymentMode>("CASH");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -70,7 +70,8 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
     })),
     { taxed, pricesIncludeGst: company.pricesIncludeGst, interState: taxed && !sameState },
   );
-  const paidValue = paidAmount ?? String(preview.grandTotal);
+  const paid = paidAmount === "" ? 0 : Number(paidAmount);
+  const balance = Math.round((preview.grandTotal - paid) * 100) / 100;
 
   const addLine = (productId: number) => {
     const p = productById.get(productId);
@@ -115,7 +116,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
         rate: Number(l.rate),
         discount: l.discount === "" ? undefined : Number(l.discount),
       })),
-      ...(!sale && paidNow && Number(paidValue) > 0 && { paidNow: { amount: Number(paidValue), mode: paidMode } }),
+      ...(!sale && paid > 0 && { paidNow: { amount: paid, mode: paidMode } }),
     };
     try {
       const saved = sale
@@ -295,33 +296,69 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
 
       {!sale && lines.length > 0 && (
         <Card className="space-y-3 p-4">
-          <label className="flex items-center gap-2 text-sm font-medium">
-            <input type="checkbox" checked={paidNow} onChange={(e) => setPaidNow(e.target.checked)} />
-            Payment received now
-          </label>
-          {paidNow && (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Amount (₹)">
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="0.01"
-                  value={paidValue}
-                  onChange={(e) => setPaidAmount(e.target.value)}
-                />
-              </Field>
-              <Field label="Received by">
-                <Select value={paidMode} onChange={(e) => setPaidMode(e.target.value as PaymentMode)}>
-                  {PAYMENT_MODES.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Amount received now (₹)" hint="Leave blank if not paid yet">
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={preview.grandTotal}
+                step="0.01"
+                placeholder="0"
+                value={paidAmount}
+                onChange={(e) => setPaidAmount(e.target.value)}
+              />
+            </Field>
+            <Field label="Received by">
+              <Select
+                value={paidMode}
+                onChange={(e) => setPaidMode(e.target.value as PaymentMode)}
+                disabled={paid <= 0}
+              >
+                {PAYMENT_MODES.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <p
+              className={
+                balance < 0
+                  ? "text-red-600 dark:text-red-400"
+                  : paid > 0 && balance === 0
+                    ? "text-green-700 dark:text-green-400"
+                    : "text-muted"
+              }
+            >
+              {balance < 0
+                ? `More than the invoice total (${formatINR(preview.grandTotal)})`
+                : paid <= 0
+                  ? `Not paid: ${formatINR(preview.grandTotal)} due`
+                  : balance === 0
+                    ? "Fully paid"
+                    : `Part payment: ${formatINR(balance)} still due`}
+            </p>
+            <div className="flex gap-2">
+              {paid !== preview.grandTotal && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPaidAmount(String(preview.grandTotal))}
+                >
+                  Full amount
+                </Button>
+              )}
+              {paidAmount !== "" && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setPaidAmount("")}>
+                  Clear
+                </Button>
+              )}
             </div>
-          )}
+          </div>
         </Card>
       )}
 
