@@ -6,7 +6,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import { formatINR, todayIST } from "@/lib/format";
 import { GST_RATES, packFor, perUnit, unitFactor, unitSingular, type Product } from "@/lib/products";
-import { UNITS, unitShort, type MaterialListItem, type Unit } from "@/lib/stock";
+import { UNITS, formatQty, unitShort, type MaterialListItem, type Unit } from "@/lib/stock";
 import { Button, Card, ErrorBox, Field, Input, Segmented, Select } from "@/components/ui";
 
 type RecipeRow = { materialId: number; qty: string; perPiece: boolean };
@@ -34,8 +34,9 @@ export function ProductForm({ product, template }: { product?: Product; template
   const [pieces, setPieces] = useState(src?.piecesPerUnit ? String(src.piecesPerUnit) : "");
   const [packSize, setPackSize] = useState(src?.packSize ? String(Number(src.packSize)) : "");
   const [packUnit, setPackUnit] = useState<Unit>(src?.packUnit ?? "G");
-  const [priceUnit, setPriceUnit] = useState<Unit | null>(src?.priceUnit ?? null);
+  // Price per unit sold (pack/bag) and per piece/kg; either may be blank (worked out from the other).
   const [price, setPrice] = useState(src?.price ?? "");
+  const [piecePrice, setPiecePrice] = useState(src?.piecePrice ?? "");
   const [mrp, setMrp] = useState(src?.mrp ?? "");
   const [hsnCode, setHsnCode] = useState(src?.hsnCode ?? "");
   const [gstRate, setGstRate] = useState(
@@ -54,10 +55,13 @@ export function ProductForm({ product, template }: { product?: Product; template
   const size = packSize === "" ? null : Number(packSize);
   const pack = packFor({ saleUnit, piecesPerUnit, packSize: size, packUnit: size ? packUnit : null });
   const packed = { saleUnit, pack };
-  // The price unit must be one the product can be sold in; fall back to the sale unit.
-  const priceIn: Unit = priceUnit && pack.units.some((u) => u.unit === priceUnit) ? priceUnit : saleUnit;
+  const twoUnits = pack.units.length > 1;
+  const per = unitFactor(packed, saleUnit); // e.g. 10 pieces per pack, 25 kg per bag
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  // A blank price is worked out from the other one, like the backend does.
   const pricePerSaleUnit =
-    price === "" ? null : (Number(price) * unitFactor(packed, saleUnit)) / unitFactor(packed, priceIn);
+    price !== "" ? Number(price) : twoUnits && piecePrice !== "" ? round2(Number(piecePrice) * per) : null;
+  const derivedPiecePrice = price !== "" ? round2(Number(price) / per) : null;
 
   const byId = new Map(materials?.map((m) => [m.id, m]));
   const used = new Set(recipe.map((r) => r.materialId));
@@ -85,8 +89,8 @@ export function ProductForm({ product, template }: { product?: Product; template
       piecesPerUnit,
       packSize: size,
       packUnit: size ? packUnit : null,
-      priceUnit: priceIn === saleUnit ? null : priceIn,
-      price: Number(price),
+      price: price === "" ? null : Number(price),
+      piecePrice: twoUnits && piecePrice !== "" ? Number(piecePrice) : null,
       mrp: mrp === "" ? null : Number(mrp),
       hsnCode: hsnCode.trim() || null,
       gstRate: Number(gstRate),
@@ -270,20 +274,21 @@ export function ProductForm({ product, template }: { product?: Product; template
       </Card>
 
       <Card className="space-y-4 p-4">
-        <h2 className="font-semibold">Price & GST</h2>
-        {pack.units.length > 1 && (
-          <Segmented<Unit>
-            value={priceIn}
-            onChange={setPriceUnit}
-            options={pack.units.map((u) => ({ value: u.unit, label: `Price ${perUnit(u.unit)}` }))}
-          />
-        )}
+        <div>
+          <h2 className="font-semibold">Price & GST</h2>
+          {twoUnits && (
+            <p className="text-xs text-muted">
+              Fill one or both. A blank price is worked out from the other, e.g. {perUnit(pack.stockUnit)} ={" "}
+              {perUnit(saleUnit)} ÷ {formatQty(per)}.
+            </p>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <Field
-            label={`Selling price ${perUnit(priceIn)} (₹)`}
+            label={`Selling price ${perUnit(saleUnit)} (₹)`}
             hint={
-              priceIn !== saleUnit && pricePerSaleUnit !== null
-                ? `= ${formatINR(Math.round(pricePerSaleUnit * 100) / 100)} ${perUnit(saleUnit)}`
+              twoUnits && price === "" && pricePerSaleUnit !== null
+                ? `Blank = ${formatINR(pricePerSaleUnit)} (from ${perUnit(pack.stockUnit)} price)`
                 : undefined
             }
           >
@@ -292,11 +297,33 @@ export function ProductForm({ product, template }: { product?: Product; template
               inputMode="decimal"
               min={0}
               step="0.01"
-              required
+              required={!twoUnits || piecePrice === ""}
+              placeholder={twoUnits && pricePerSaleUnit !== null && price === "" ? String(pricePerSaleUnit) : undefined}
               value={price}
               onChange={(e) => setPrice(e.target.value)}
             />
           </Field>
+          {twoUnits && (
+            <Field
+              label={`Selling price ${perUnit(pack.stockUnit)} (₹)`}
+              hint={
+                piecePrice === "" && derivedPiecePrice !== null
+                  ? `Blank = ${formatINR(derivedPiecePrice)} (from ${perUnit(saleUnit)} price)`
+                  : undefined
+              }
+            >
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.01"
+                required={price === ""}
+                placeholder={derivedPiecePrice !== null && piecePrice === "" ? String(derivedPiecePrice) : undefined}
+                value={piecePrice}
+                onChange={(e) => setPiecePrice(e.target.value)}
+              />
+            </Field>
+          )}
           <Field label="MRP (₹)" hint="Optional">
             <Input type="number" inputMode="decimal" min={0} step="0.01" value={mrp} onChange={(e) => setMrp(e.target.value)} />
           </Field>

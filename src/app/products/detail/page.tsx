@@ -174,10 +174,13 @@ function ProductDetailView() {
           <p className="mt-2 text-xs text-muted">Made stock is added from Dashboard → Add production.</p>
         </Card>
         <Card className="p-4 text-sm">
-          <Row label={`Price ${perUnit(p.priceUnit ?? p.saleUnit)}`} value={formatINR(p.price)} />
-          {p.priceUnit && p.priceUnit !== p.saleUnit && (
-            <Row muted label={`= ${perUnit(p.saleUnit)}`} value={formatINR(p.cost.pricePerUnit)} />
-          )}
+          {p.pack.units.map((u) => (
+            <Row
+              key={u.unit}
+              label={`Price ${perUnit(u.unit)}`}
+              value={u.price ? `${formatINR(u.price)}${u.priceSet ? "" : " (worked out)"}` : "—"}
+            />
+          ))}
           {p.mrp && <Row muted label="MRP" value={formatINR(p.mrp)} />}
           <Row muted label="GST" value={p.gstRate !== null ? `${Number(p.gstRate)}%` : "—"} />
           <Row muted label="HSN" value={p.hsnCode ?? "—"} />

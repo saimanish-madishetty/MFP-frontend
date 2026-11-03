@@ -3,12 +3,15 @@ import { formatQty, unitShort, type MaterialType, type Unit } from "./stock";
 /**
  * Packaging worked out by the backend (src/products/packaging.ts). Stock is kept in `stockUnit`:
  * pieces for "10 × 500 g" packs, kg for a "25 kg bag", otherwise the sale unit itself.
- * `units` are what the product can be sold/counted in, with stock units per 1 of each.
+ * `units` are what the product can be sold/counted in, with stock units per 1 of each and the
+ * selling price for that unit (`priceSet` false when worked out from the other unit's price).
  */
 export type Pack = {
   stockUnit: Unit;
   description: string;
-  units: { unit: Unit; factor: string }[];
+  /** Unit a new invoice line starts in */
+  defaultUnit: Unit;
+  units: { unit: Unit; factor: string; price?: string | null; priceSet?: boolean }[];
 };
 
 export type ProductMaterialLine = {
@@ -28,9 +31,10 @@ export type Product = {
   piecesPerUnit: number | null;
   packSize: string | null;
   packUnit: Unit | null;
-  /** What `price` is for; null = the sale unit. */
-  priceUnit: Unit | null;
-  price: string;
+  /** Per unit sold (pack, bag); null = worked out from piecePrice */
+  price: string | null;
+  /** Per piece or per kg/L; null = worked out from price */
+  piecePrice: string | null;
   mrp: string | null;
   hsnCode: string | null;
   gstRate: string | null;
@@ -40,7 +44,7 @@ export type Product = {
   active: boolean;
   materials: ProductMaterialLine[];
   pack: Pack;
-  cost: { costPerUnit: string | null; incomplete: boolean; pricePerUnit: string; margin: string | null };
+  cost: { costPerUnit: string | null; incomplete: boolean; margin: string | null };
 };
 
 const BASE: Partial<Record<Unit, { base: Unit; per: number }>> = {
@@ -81,10 +85,16 @@ export function packFor(f: {
           { unit: f.saleUnit, factor: String(saleFactor) },
           { unit: stockUnit, factor: "1" },
         ];
-  return { stockUnit, description, units };
+  return { stockUnit, description, defaultUnit: f.saleUnit, units };
 }
 
 type Packed = { saleUnit: Unit; pack: Pack };
+
+/** Selling price for one `unit` (own or worked out), as a number; null if none. */
+export function priceFor(p: Packed, unit: Unit): number | null {
+  const price = p.pack.units.find((u) => u.unit === unit)?.price;
+  return price == null ? null : Number(price);
+}
 
 /** Stock units in one `unit` (e.g. 10 pieces per pack); 1 if the unit isn't listed. */
 export function unitFactor(p: Packed, unit: Unit): number {

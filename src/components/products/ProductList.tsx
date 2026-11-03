@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import useSWR from "swr";
 import { formatINR } from "@/lib/format";
-import { formatStock, type Product } from "@/lib/products";
+import { formatStock, perUnit, type Product } from "@/lib/products";
 import { Badge, ButtonLink, Empty, ErrorBox, Input, Loading } from "@/components/ui";
 
 /** Searchable product cards with ready stock. Used on the Products page and the Stock → Products tab. */
@@ -55,7 +55,12 @@ export function ProductList() {
                 {!p.active && <Badge>Archived</Badge>}
               </div>
               <div className="mt-3 flex items-end justify-between text-sm">
-                <span className="tabular-nums">{formatINR(p.price)}</span>
+                <span className="tabular-nums">
+                  {p.pack.units
+                    .filter((u) => u.priceSet)
+                    .map((u) => `${formatINR(u.price ?? 0)} ${perUnit(u.unit)}`)
+                    .join(" · ")}
+                </span>
                 <span
                   className={`font-semibold tabular-nums ${
                     Number(p.currentQty) <= 0 ? "text-red-600 dark:text-red-400" : ""

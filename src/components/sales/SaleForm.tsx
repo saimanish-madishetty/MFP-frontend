@@ -7,7 +7,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import type { Buyer } from "@/lib/buyers";
 import { formatINR, todayIST } from "@/lib/format";
-import { formatStock, perUnit, unitFactor, unitSingular, type Product } from "@/lib/products";
+import { formatStock, perUnit, priceFor, unitFactor, unitSingular, type Product } from "@/lib/products";
 import { previewInvoice, type CompanyProfile, type SaleDetail } from "@/lib/sales";
 import { unitShort, type Unit } from "@/lib/stock";
 import { PAYMENT_MODES, type PaymentMode } from "@/lib/workers";
@@ -75,17 +75,27 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
   const addLine = (productId: number) => {
     const p = productById.get(productId);
     if (!p) return;
-    // Start in the unit the price is set for (e.g. kg for vermicelli), at the product's price.
-    const unit = p.priceUnit ?? p.saleUnit;
-    setLines((prev) => [...prev, { key: nextKey++, productId, unit, quantity: "", rate: String(Number(p.price)), discount: "" }]);
+    // Start in the product's usual unit (kg for vermicelli priced per kg), at its price for that unit.
+    const unit = p.pack.defaultUnit;
+    const rate = priceFor(p, unit);
+    setLines((prev) => [
+      ...prev,
+      { key: nextKey++, productId, unit, quantity: "", rate: rate === null ? "" : String(rate), discount: "" },
+    ]);
   };
 
-  /** Switching pack ↔ piece (or bag ↔ kg) converts the rate, e.g. ₹450/pack → ₹45/piece. */
+  /**
+   * Switching pack ↔ piece (or bag ↔ kg) takes that unit's price (its own, or worked out),
+   * falling back to converting the current rate.
+   */
   const changeUnit = (l: LineState, unit: Unit) => {
     const p = lineProduct(l.productId);
     if (!p || unit === l.unit) return;
-    const rate = l.rate === "" ? "" : String(Math.round(((Number(l.rate) * unitFactor(p, unit)) / unitFactor(p, l.unit)) * 100) / 100);
-    update(l.key, { unit, rate });
+    const listed = priceFor(p, unit);
+    const converted =
+      l.rate === "" ? null : Math.round(((Number(l.rate) * unitFactor(p, unit)) / unitFactor(p, l.unit)) * 100) / 100;
+    const rate = listed ?? converted;
+    update(l.key, { unit, rate: rate === null ? "" : String(rate) });
   };
   const update = (key: number, patch: Partial<LineState>) =>
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -247,7 +257,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
             .filter((p) => p.active)
             .map((p) => (
               <option key={p.id} value={p.id}>
-                {p.internalName} · {formatINR(p.price)} {perUnit(p.priceUnit ?? p.saleUnit)}
+                {p.internalName} · {formatINR(priceFor(p, p.pack.defaultUnit) ?? 0)} {perUnit(p.pack.defaultUnit)}
               </option>
             ))}
         </Select>
