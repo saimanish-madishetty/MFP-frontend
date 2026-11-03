@@ -45,3 +45,10 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Local notes, editor tasks and dev scripts (kept on this machine, not in Git)
+changes.md
+PROJECT_CONTEXT.md
+AGENTS.md
+.vscode/
+scripts/*.ps1
