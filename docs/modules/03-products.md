@@ -63,6 +63,7 @@ This lets the app warn when selling more than is in stock, and shows finished st
 
 - Finished goods stock is tracked: "Products made" on the day-end entry adds stock, sales remove it, cancelled sales return it, and manual adjustments are possible.
 - Each pack size is a separate product.
+- **Packing** (Nov 2026): a product is "sold as" a pack/bag/box, with optional **pieces inside** (e.g. 10 × 500 g) or a single size (e.g. 25 kg bag). Stock is kept in the smallest sellable unit: pieces for pieced products, kg/L for weighed ones, so loose pieces or kilos can be sold. Production is entered in packs/bags; each invoice line picks pack or piece (bag or kg) and the rate converts. The price can be per pack, per piece or per kg. Recipe lines can be per piece or per pack. Invoices print the packing (e.g. "10 × 500 g pack (5 kg)") under the public name. Rules: `MFP-backend/src/products/packaging.ts`. Once stock exists, a product can't switch between pieces, weight and whole units; use **Duplicate** to add another size.
 - Whether prices include GST is a company setting (Settings → "My prices include GST"), not per product.
 - Material quantities in the recipe can be left blank; the cost estimate says when it is incomplete.
 - Auto-filling material usage from recipes ("formula") is still to be discussed.

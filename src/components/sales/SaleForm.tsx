@@ -7,13 +7,14 @@ import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import type { Buyer } from "@/lib/buyers";
 import { formatINR, todayIST } from "@/lib/format";
-import type { Product } from "@/lib/products";
+import { formatStock, perUnit, unitFactor, unitSingular, type Product } from "@/lib/products";
 import { previewInvoice, type CompanyProfile, type SaleDetail } from "@/lib/sales";
-import { formatQty, unitShort } from "@/lib/stock";
+import { unitShort, type Unit } from "@/lib/stock";
 import { PAYMENT_MODES, type PaymentMode } from "@/lib/workers";
-import { Button, Card, ErrorBox, Field, Input, Loading, Row, Select, Textarea } from "@/components/ui";
+import { Button, Card, ErrorBox, Field, Input, Loading, Row, Segmented, Select, Textarea } from "@/components/ui";
 
-type LineState = { key: number; productId: number; quantity: string; rate: string; discount: string };
+/** `unit` is what quantity and rate are in: the product's pack/bag, or a piece/kg. */
+type LineState = { key: number; productId: number; unit: Unit; quantity: string; rate: string; discount: string };
 
 let nextKey = 1;
 
@@ -31,6 +32,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
     (sale?.lines ?? []).map((l) => ({
       key: nextKey++,
       productId: l.productId,
+      unit: l.unit,
       quantity: String(Number(l.quantity)),
       rate: String(Number(l.rate)),
       discount: Number(l.discount) > 0 ? String(Number(l.discount)) : "",
@@ -47,8 +49,13 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
   const productById = new Map(products.map((p) => [p.id, p]));
   // Archived products already on this invoice still need a name.
   const lineProduct = (id: number) => productById.get(id);
+  // Stock (in stock units) this invoice already took; when editing, it counts as available again.
   const originalQty = new Map<number, number>();
-  sale?.lines.forEach((l) => originalQty.set(l.productId, (originalQty.get(l.productId) ?? 0) + Number(l.quantity)));
+  sale?.lines.forEach((l) => originalQty.set(l.productId, (originalQty.get(l.productId) ?? 0) + Number(l.stockQty)));
+  const stockOf = (l: LineState) => {
+    const p = lineProduct(l.productId);
+    return (Number(l.quantity) || 0) * (p ? unitFactor(p, l.unit) : 1);
+  };
 
   const buyer = buyers.find((b) => b.id === buyerId) ?? (sale && sale.buyerId === buyerId ? sale.buyer : undefined);
   const taxed = company.gstin !== null;
@@ -68,7 +75,17 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
   const addLine = (productId: number) => {
     const p = productById.get(productId);
     if (!p) return;
-    setLines((prev) => [...prev, { key: nextKey++, productId, quantity: "", rate: String(Number(p.price)), discount: "" }]);
+    // Start in the unit the price is set for (e.g. kg for vermicelli), at the product's price.
+    const unit = p.priceUnit ?? p.saleUnit;
+    setLines((prev) => [...prev, { key: nextKey++, productId, unit, quantity: "", rate: String(Number(p.price)), discount: "" }]);
+  };
+
+  /** Switching pack ↔ piece (or bag ↔ kg) converts the rate, e.g. ₹450/pack → ₹45/piece. */
+  const changeUnit = (l: LineState, unit: Unit) => {
+    const p = lineProduct(l.productId);
+    if (!p || unit === l.unit) return;
+    const rate = l.rate === "" ? "" : String(Math.round(((Number(l.rate) * unitFactor(p, unit)) / unitFactor(p, l.unit)) * 100) / 100);
+    update(l.key, { unit, rate });
   };
   const update = (key: number, patch: Partial<LineState>) =>
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -83,6 +100,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
       notes: notes.trim() || undefined,
       lines: lines.map((l) => ({
         productId: l.productId,
+        unit: l.unit,
         quantity: Number(l.quantity),
         rate: Number(l.rate),
         discount: l.discount === "" ? undefined : Number(l.discount),
@@ -145,15 +163,19 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
         {lines.map((l, i) => {
           const p = lineProduct(l.productId);
           const name = p?.internalName ?? sale?.lines.find((x) => x.productId === l.productId)?.product.internalName ?? "?";
-          const unit = p?.saleUnit ?? sale?.lines.find((x) => x.productId === l.productId)?.unit ?? "PCS";
+          // In stock units (pieces, kg, …), summed over every line of this product.
           const available = (p ? Number(p.currentQty) : 0) + (originalQty.get(l.productId) ?? 0);
-          const wanted = lines.filter((x) => x.productId === l.productId).reduce((a, x) => a + (Number(x.quantity) || 0), 0);
+          const wanted = lines.filter((x) => x.productId === l.productId).reduce((a, x) => a + stockOf(x), 0);
           return (
             <div key={l.key} className="space-y-2 rounded-lg border border-border p-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{name}</p>
-                  {p && <p className="truncate text-xs text-muted">Invoice shows: {p.publicName}</p>}
+                  {p && (
+                    <p className="truncate text-xs text-muted">
+                      Invoice shows: {p.publicName} · {p.pack.description}
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -164,8 +186,15 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
                   ✕
                 </button>
               </div>
+              {p && p.pack.units.length > 1 && (
+                <Segmented<Unit>
+                  value={l.unit}
+                  onChange={(u) => changeUnit(l, u)}
+                  options={p.pack.units.map((u) => ({ value: u.unit, label: `By ${unitSingular(u.unit)}` }))}
+                />
+              )}
               <div className="grid grid-cols-3 gap-2">
-                <Field label={`Qty (${unitShort(unit)})`}>
+                <Field label={`Qty (${unitShort(l.unit)})`}>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -176,7 +205,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
                     onChange={(e) => update(l.key, { quantity: e.target.value })}
                   />
                 </Field>
-                <Field label="Rate (₹)">
+                <Field label={`Rate ₹ ${perUnit(l.unit)}`}>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -201,9 +230,11 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className={wanted > available ? "text-amber-600 dark:text-amber-400" : "text-muted"}>
-                  {wanted > available
-                    ? `Only ${formatQty(available, unit)} ready. You can still save.`
-                    : `${formatQty(available, unit)} ready`}
+                  {!p
+                    ? ""
+                    : wanted > available
+                      ? `Only ${formatStock(p, available)} ready. You can still save.`
+                      : `${formatStock(p, available)} ready`}
                 </span>
                 <span className="font-medium tabular-nums">{formatINR(preview.lineTotals[i] ?? 0)}</span>
               </div>
@@ -216,7 +247,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
             .filter((p) => p.active)
             .map((p) => (
               <option key={p.id} value={p.id}>
-                {p.internalName} · {formatINR(p.price)}
+                {p.internalName} · {formatINR(p.price)} {perUnit(p.priceUnit ?? p.saleUnit)}
               </option>
             ))}
         </Select>

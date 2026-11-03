@@ -5,7 +5,8 @@ import useSWR from "swr";
 import { Badge, ErrorBox } from "@/components/ui";
 import { formatDay, formatINR } from "@/lib/format";
 import { saleStatus, type SaleListItem } from "@/lib/sales";
-import { formatQty, type StockOverview, type Unit } from "@/lib/stock";
+import { formatStock, type Pack } from "@/lib/products";
+import type { StockOverview, Unit } from "@/lib/stock";
 
 type WorkersOverview = {
   date: string;
@@ -26,7 +27,7 @@ type BuyersOverview = { buyers: number; outstanding: string; overdueAmount: stri
 type ProductsOverview = {
   products: number;
   outOfStock: number;
-  stock: { id: number; internalName: string; currentQty: string; saleUnit: Unit }[];
+  stock: { id: number; internalName: string; currentQty: string; saleUnit: Unit; pack: Pack }[];
 };
 
 function StatCard({
@@ -201,7 +202,7 @@ export default function DashboardPage() {
               products.stock.slice(0, 4).map((p) => (
                 <p key={p.id} className="mt-1 flex justify-between gap-2">
                   <span className="truncate">{p.internalName}</span>
-                  <span className="shrink-0 tabular-nums">{formatQty(p.currentQty, p.saleUnit)}</span>
+                  <span className="shrink-0 tabular-nums">{formatStock(p, p.currentQty)}</span>
                 </p>
               ))
             ) : (

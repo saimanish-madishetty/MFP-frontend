@@ -6,8 +6,8 @@ import { Suspense, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import { formatDay, formatINR, todayIST } from "@/lib/format";
-import { PRODUCT_MOVEMENT_LABEL, type ProductDetail } from "@/lib/products";
-import { formatQty, unitShort } from "@/lib/stock";
+import { PRODUCT_MOVEMENT_LABEL, formatStock, perUnit, type ProductDetail } from "@/lib/products";
+import { formatQty, unitShort, type Unit } from "@/lib/stock";
 import {
   Badge,
   Button,
@@ -26,6 +26,7 @@ import {
 function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: () => void }) {
   const { mutate } = useSWRConfig();
   const [mode, setMode] = useState<"count" | "change">("count");
+  const [unit, setUnit] = useState<Unit>(product.saleUnit);
   const [value, setValue] = useState("");
   const [direction, setDirection] = useState<"remove" | "add">("remove");
   const [reason, setReason] = useState("Count correction");
@@ -41,6 +42,7 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
       await api(`/products/${product.id}/adjustments`, "POST", {
         date,
         reason: reason.trim(),
+        unit,
         ...(mode === "count"
           ? { countedQty: Number(value) }
           : { quantity: (direction === "add" ? 1 : -1) * Number(value) }),
@@ -67,7 +69,14 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
             { value: "change", label: "Add / remove" },
           ]}
         />
-        <p className="text-sm text-muted">In the app: {formatQty(product.currentQty, product.saleUnit)}</p>
+        <p className="text-sm text-muted">In the app: {formatStock(product, product.currentQty)}</p>
+        {product.pack.units.length > 1 && (
+          <Segmented<Unit>
+            value={unit}
+            onChange={setUnit}
+            options={product.pack.units.map((u) => ({ value: u.unit, label: `In ${unitShort(u.unit)}` }))}
+          />
+        )}
         {mode === "change" && (
           <Segmented<"remove" | "add">
             value={direction}
@@ -78,7 +87,7 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
             ]}
           />
         )}
-        <Field label={mode === "count" ? `Actual count (${unitShort(product.saleUnit)})` : `Quantity (${unitShort(product.saleUnit)})`}>
+        <Field label={mode === "count" ? `Actual count (${unitShort(unit)})` : `Quantity (${unitShort(unit)})`}>
           <Input
             type="number"
             inputMode="decimal"
@@ -140,9 +149,14 @@ function ProductDetailView() {
           </span>
         }
         actions={
-          <ButtonLink href={`/products/edit/?id=${p.id}`} variant="secondary">
-            Edit
-          </ButtonLink>
+          <>
+            <ButtonLink href={`/products/new/?from=${p.id}`} variant="secondary">
+              Duplicate
+            </ButtonLink>
+            <ButtonLink href={`/products/edit/?id=${p.id}`} variant="secondary">
+              Edit
+            </ButtonLink>
+          </>
         }
       />
       <ErrorBox error={actionError} />
@@ -151,19 +165,23 @@ function ProductDetailView() {
         <Card className="p-4">
           <p className="text-sm text-muted">Ready stock</p>
           <p className={`text-3xl font-semibold tabular-nums ${Number(p.currentQty) <= 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-            {formatQty(p.currentQty, p.saleUnit)}
+            {formatStock(p, p.currentQty)}
           </p>
+          <p className="text-xs text-muted">{p.pack.description}</p>
           <Button variant="secondary" className="mt-3 w-full" onClick={() => setAdjusting(true)}>
             Adjust stock
           </Button>
           <p className="mt-2 text-xs text-muted">Made stock is added from Dashboard → Add production.</p>
         </Card>
         <Card className="p-4 text-sm">
-          <Row label={`Price per ${unitShort(p.saleUnit)}`} value={formatINR(p.price)} />
+          <Row label={`Price ${perUnit(p.priceUnit ?? p.saleUnit)}`} value={formatINR(p.price)} />
+          {p.priceUnit && p.priceUnit !== p.saleUnit && (
+            <Row muted label={`= ${perUnit(p.saleUnit)}`} value={formatINR(p.cost.pricePerUnit)} />
+          )}
           {p.mrp && <Row muted label="MRP" value={formatINR(p.mrp)} />}
           <Row muted label="GST" value={p.gstRate !== null ? `${Number(p.gstRate)}%` : "—"} />
           <Row muted label="HSN" value={p.hsnCode ?? "—"} />
-          {p.packSize && <Row muted label="Pack size" value={formatQty(p.packSize, p.packUnit ?? undefined)} />}
+          <Row muted label="Packing" value={p.pack.description} />
           <div className="mt-2 border-t border-border pt-2">
             <Row
               label="Material cost (est.)"
@@ -176,7 +194,7 @@ function ProductDetailView() {
       </div>
 
       <Card className="p-4">
-        <h2 className="mb-2 font-semibold">Materials per {unitShort(p.saleUnit)}</h2>
+        <h2 className="mb-2 font-semibold">Materials {perUnit(p.saleUnit)}</h2>
         {p.materials.length === 0 ? (
           <p className="text-sm text-muted">No materials listed yet.</p>
         ) : (
@@ -196,7 +214,11 @@ function ProductDetailView() {
                         {m.material.name}
                       </Link>
                     }
-                    value={m.qtyPerUnit ? formatQty(m.qtyPerUnit, m.material.unit) : "?"}
+                    value={
+                      m.qtyPerUnit
+                        ? `${formatQty(m.qtyPerUnit, m.material.unit)}${m.perPiece ? " per piece" : ""}`
+                        : "?"
+                    }
                   />
                 ))}
               </div>
@@ -251,9 +273,9 @@ function ProductDetailView() {
                   <div className="text-right tabular-nums">
                     <p className={qty < 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}>
                       {qty > 0 ? "+" : "−"}
-                      {formatQty(Math.abs(qty))}
+                      {formatStock(p, Math.abs(qty))}
                     </p>
-                    <p className="text-xs text-muted">= {formatQty(mv.balanceAfter)}</p>
+                    <p className="text-xs text-muted">= {formatStock(p, mv.balanceAfter)}</p>
                   </div>
                   {deletable ? (
                     <button

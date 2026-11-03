@@ -262,6 +262,7 @@ function SaleDetailView() {
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{l.publicName}</p>
                 <p className="text-xs text-muted">
+                  {l.description && <span className="block">{l.description}</span>}
                   {formatQty(l.quantity)} {unitShort(l.unit)} × {formatINR(l.rate)}
                   {Number(l.discount) > 0 && ` − ${formatINR(l.discount)}`}
                   {taxed && ` · GST ${Number(l.gstRate)}%`}

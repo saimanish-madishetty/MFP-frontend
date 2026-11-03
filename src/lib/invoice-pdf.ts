@@ -107,10 +107,16 @@ function definition(sale: SaleDetail, company: CompanyProfile, logo: string | nu
     const qty = `${formatQty(l.quantity)} ${unitShort(l.unit)}`;
     const disc = Number(l.discount) > 0 ? MONEY.format(Number(l.discount)) : "—";
     const right = (text: string) => ({ text, alignment: "right" }) as TableCell;
+    // Public name, with the packing underneath so different sizes are told apart.
+    const item = (
+      l.description
+        ? { text: [l.publicName, { text: `\n${l.description}`, fontSize: 8, color: "#555555" }] }
+        : l.publicName
+    ) as TableCell;
     return taxed
       ? [
           String(l.lineNo),
-          l.publicName,
+          item,
           l.hsnCode ?? "",
           right(qty),
           right(MONEY.format(Number(l.rate))),
@@ -121,7 +127,7 @@ function definition(sale: SaleDetail, company: CompanyProfile, logo: string | nu
         ]
       : [
           String(l.lineNo),
-          l.publicName,
+          item,
           right(qty),
           right(MONEY.format(Number(l.rate))),
           right(disc),

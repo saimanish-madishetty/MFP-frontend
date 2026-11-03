@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
-import type { Product } from "@/lib/products";
+import { formatStock, unitFactor, type Product } from "@/lib/products";
 import { formatQty, unitShort, type MaterialListItem, type ProductionDay } from "@/lib/stock";
 import { Button, ButtonLink, DateStepper, Empty, ErrorBox, Input, Loading, Textarea } from "@/components/ui";
 
@@ -120,16 +120,15 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
               <ul className="divide-y divide-border">
                 {productList.map((p) => {
                   const v = made(p.id);
+                  // Made is entered in packs/bags; stock is kept in stock units (pieces, kg).
+                  const per = unitFactor(p, p.saleUnit);
+                  const ready = Number(p.currentQty) + (Number(v || 0) - Number(savedMade.get(p.id) ?? 0)) * per;
                   return (
                     <li key={p.id} className="flex items-center gap-3 px-3 py-2.5">
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">{p.internalName}</p>
                         <p className="text-xs text-muted">
-                          Ready now:{" "}
-                          {formatQty(
-                            Number(p.currentQty) - Number(savedMade.get(p.id) ?? 0) + Number(v || 0),
-                            p.saleUnit,
-                          )}
+                          {p.pack.description} · ready now: {formatStock(p, ready)}
                         </p>
                       </div>
                       <div className="flex items-center gap-1.5">

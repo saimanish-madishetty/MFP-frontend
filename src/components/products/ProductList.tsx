@@ -4,8 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import useSWR from "swr";
 import { formatINR } from "@/lib/format";
-import type { Product } from "@/lib/products";
-import { formatQty } from "@/lib/stock";
+import { formatStock, type Product } from "@/lib/products";
 import { Badge, ButtonLink, Empty, ErrorBox, Input, Loading } from "@/components/ui";
 
 /** Searchable product cards with ready stock. Used on the Products page and the Stock → Products tab. */
@@ -49,7 +48,9 @@ export function ProductList() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{p.internalName}</p>
-                  <p className="truncate text-xs text-muted">On invoice: {p.publicName}</p>
+                  <p className="truncate text-xs text-muted">
+                    {p.pack.description} · on invoice: {p.publicName}
+                  </p>
                 </div>
                 {!p.active && <Badge>Archived</Badge>}
               </div>
@@ -60,7 +61,7 @@ export function ProductList() {
                     Number(p.currentQty) <= 0 ? "text-red-600 dark:text-red-400" : ""
                   }`}
                 >
-                  {formatQty(p.currentQty, p.saleUnit)} ready
+                  {formatStock(p, p.currentQty)} ready
                 </span>
               </div>
             </Link>

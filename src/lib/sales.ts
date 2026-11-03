@@ -44,9 +44,14 @@ export type SaleLine = {
   lineNo: number;
   productId: number;
   publicName: string;
+  /** Packing at time of sale, e.g. "10 × 500 g pack (5 kg)" */
+  description: string | null;
   hsnCode: string | null;
+  /** In `unit` (pack, piece, bag, kg, …) */
   quantity: string;
   unit: Unit;
+  /** Same quantity in the product's stock unit */
+  stockQty: string;
   rate: string;
   discount: string;
   taxableValue: string;
