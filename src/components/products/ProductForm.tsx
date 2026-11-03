@@ -18,7 +18,7 @@ const SIZE_UNITS = UNITS.filter((u) => ["G", "KG", "ML", "L"].includes(u.value))
 
 /**
  * Add or edit a product. `template` pre-fills a new product from an existing one ("Duplicate"),
- * so another size of the same product only needs the packing and price changed.
+ * with every field copied (names and code too: the backend rejects an unchanged name or code).
  */
 export function ProductForm({ product, template }: { product?: Product; template?: Product }) {
   const router = useRouter();
@@ -26,9 +26,9 @@ export function ProductForm({ product, template }: { product?: Product; template
   const { data: materials } = useSWR<MaterialListItem[]>("/materials?includeInactive=true");
   const src = product ?? template;
 
-  const [internalName, setInternalName] = useState(product?.internalName ?? "");
+  const [internalName, setInternalName] = useState(src?.internalName ?? "");
   const [publicName, setPublicName] = useState(src?.publicName ?? "");
-  const [code, setCode] = useState(product?.code ?? "");
+  const [code, setCode] = useState(src?.code ?? "");
   const [saleUnit, setSaleUnit] = useState<Unit>(src?.saleUnit ?? "PACK");
   const [hasPieces, setHasPieces] = useState(src ? (src.piecesPerUnit ?? 0) > 1 : true);
   const [pieces, setPieces] = useState(src?.piecesPerUnit ? String(src.piecesPerUnit) : "");

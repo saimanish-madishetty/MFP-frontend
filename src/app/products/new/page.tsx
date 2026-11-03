@@ -15,7 +15,7 @@ function NewProduct() {
     <div className="mx-auto max-w-2xl">
       <PageHeader
         title={template ? `New size of ${template.publicName}` : "Add product"}
-        subtitle={template ? "Copied from the other product. Change the packing, price and name." : undefined}
+        subtitle={template ? "Everything is copied. Change the name (and code) and whatever differs." : undefined}
         back={from ? `/products/detail/?id=${from}` : "/products/"}
       />
       <ErrorBox error={error} />
