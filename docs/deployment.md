@@ -169,3 +169,28 @@ The web app on Vercel updates by itself on every push to `main`; the APK only ch
 | APK opens but shows no data | `.env.production` missing or wrong when `android:sync` ran; rebuild |
 | First load takes ~1 minute | Render was asleep; check the UptimeRobot monitor is running |
 | Phone refuses to install an update | APK signed with a different keystore, or `versionCode` not raised |
+
+## Shipping a release: `scripts/deploy-prod.ps1`
+
+Run from `C:\MFP\MFP-frontend` in PowerShell, with the branch to ship checked out in **both** repos
+(the script is kept on this computer only; `scripts/*.ps1` is git-ignored):
+
+```powershell
+.\scripts\deploy-prod.ps1            # asks "deploy" before pushing
+.\scripts\deploy-prod.ps1 -Yes       # no question
+.\scripts\deploy-prod.ps1 -FrontendOnly   # or -BackendOnly
+```
+
+What it does, in order (it stops at the first problem; nothing is pushed before step 4):
+
+1. Both repos clean, and the branch contains everything on `main` (fast-forward only). Lists new commits and migrations.
+2. Checks: backend type-check, tests, build; frontend type-check, lint, build.
+3. Backup of the production database to `C:\MFP\backups\prod-before-deploy-<date>.sql` (Docker `pg_dump`, TLS verified).
+4. Backend: `git push origin <branch>:main` → Render builds, runs `prisma migrate deploy`, restarts. Waits until `/health` shows the new commit.
+5. Frontend: same push → Vercel builds. Waits until `/version.json` shows the new commit.
+6. Smoke test of a few API calls and pages, then tags both repos `prod-<date>-<time>`.
+
+The working folders don't switch branch, so git-ignored local files (`changes.md`, …) are untouched.
+
+**Rolling back:** Render → service → Events → pick the previous deploy → *Rollback*; Vercel → Deployments → previous one → *Promote to Production*.
+A rollback doesn't undo database migrations; restore the backup from step 3 only if a migration itself went wrong.
