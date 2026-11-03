@@ -36,9 +36,35 @@ export type ProductionDay = {
   entry: {
     id: number;
     notes: string | null;
+    /** Materials used for no product in particular (e.g. supplies) */
     items: { materialId: number; quantity: string }[];
-    products: { productId: number; quantity: string }[];
+    /** Made, in the product's sale unit, with the raw materials used for it */
+    products: {
+      productId: number;
+      quantity: string;
+      materials: {
+        materialId: number;
+        quantity: string;
+        expected: string | null;
+        waste: string | null;
+        wastePct: string | null;
+      }[];
+    }[];
   } | null;
+};
+
+/** One material's use vs. recipe; `waste` = used − expected (negative = less than the recipe). */
+export type WastageLine = {
+  material: { id: number; name: string; unit: Unit };
+  used: string;
+  expected: string | null;
+  waste: string | null;
+  wastePct: string | null;
+};
+
+export type ProductWastage = {
+  days: { date: string; made: string | null; materials: WastageLine[] }[];
+  totals: WastageLine[];
 };
 
 export type StockOverview = {
