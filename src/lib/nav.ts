@@ -11,6 +11,7 @@ export type NavItem = {
 export const navItems: NavItem[] = [
   { label: "Dashboard", href: "/", icon: "M3 12l9-9 9 9M5 10v10h5v-6h4v6h5V10", ready: true },
   { label: "Sales", href: "/sales/", icon: "M9 14l2 2 4-4M7 3h10a2 2 0 012 2v16l-3-2-2 2-2-2-2 2-2-2-3 2V5a2 2 0 012-2z", ready: true },
+  { label: "Orders", href: "/orders/", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h4", ready: true },
   { label: "Buyers", href: "/buyers/", icon: "M3 21h18M5 21V7l7-4 7 4v14M9 9h1m-1 4h1m4-4h1m-1 4h1M9 21v-4h6v4", ready: true },
   { label: "Products", href: "/products/", icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4", ready: true },
   { label: "Stock", href: "/stock/", icon: "M4 6h16M4 12h16M4 18h16", ready: true },

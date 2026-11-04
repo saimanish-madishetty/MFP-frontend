@@ -7,7 +7,8 @@ import { formatDay, formatINR } from "@/lib/format";
 import { saleStatus, type SaleListItem } from "@/lib/sales";
 import { formatStock, type Pack } from "@/lib/products";
 import { useAuth } from "@/lib/use-auth";
-import type { StockOverview, Unit } from "@/lib/stock";
+import { formatQty, type StockOverview, type Unit } from "@/lib/stock";
+import type { OrdersOverview } from "@/lib/orders";
 
 type SalesOverview = {
   today: { amount: string; count: number };
@@ -79,6 +80,7 @@ export default function DashboardPage() {
   const { data: buyers } = useSWR<BuyersOverview>("/buyers/overview");
   const { data: products } = useSWR<ProductsOverview>("/products/overview");
   const { data: s } = useSWR<StockOverview>("/stock/overview");
+  const { data: orders } = useSWR<OrdersOverview>("/orders/overview");
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -110,6 +112,34 @@ export default function DashboardPage() {
       </div>
 
       <ErrorBox error={error} />
+
+      <Section title="Orders">
+        <Link
+          href="/orders/"
+          className="block rounded-xl border border-border bg-surface p-4 text-sm hover:border-brand"
+        >
+          <p className="flex items-baseline justify-between gap-2">
+            <span className="text-2xl font-semibold tabular-nums">{orders ? orders.openCount : "—"}</span>
+            <span className="text-xs text-muted">
+              open{orders && orders.overdueCount > 0 && (
+                <span className="text-red-600 dark:text-red-400"> · {orders.overdueCount} late</span>
+              )}{" "}
+              · see all ›
+            </span>
+          </p>
+          {orders?.next.map((o) => (
+            <p key={o.id} className="mt-1 flex justify-between gap-2">
+              <span className="truncate">
+                {o.product.internalName} <span className="text-muted">· {o.buyer.name}</span>
+              </span>
+              <span className={`shrink-0 tabular-nums ${o.overdue ? "text-red-600 dark:text-red-400" : ""}`}>
+                {formatQty(o.quantity, o.unit)}
+                {o.dueDate && <span className="text-xs text-muted"> · {formatDay(o.dueDate, { year: false })}</span>}
+              </span>
+            </p>
+          ))}
+        </Link>
+      </Section>
 
       <Section title="Sales & payments">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
