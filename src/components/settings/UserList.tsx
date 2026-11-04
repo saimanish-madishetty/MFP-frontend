@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { ROLE_HINT, ROLE_LABEL, formatPhone, type Role, type UserRow } from "@/lib/auth";
 import { formatDay } from "@/lib/format";
 import { useAuth } from "@/lib/use-auth";
-import { Badge, Button, Card, ErrorBox, Field, Input, Loading, PageHeader, Segmented, Sheet } from "@/components/ui";
+import { Badge, Button, Card, ErrorBox, Field, Input, Loading, Segmented, Sheet } from "@/components/ui";
 
 const ROLES: { value: Role; label: string }[] = [
   { value: "VIEWER", label: ROLE_LABEL.VIEWER },
@@ -118,7 +118,8 @@ function UserSheet({ user, onClose, onSaved }: { user?: UserRow; onClose: () => 
   );
 }
 
-export default function UsersPage() {
+/** Settings → Users tab (admins only): who can log in to the app. */
+export function UserList() {
   const { user: me, isAdmin } = useAuth();
   const { data: users, error, mutate } = useSWR<UserRow[]>(isAdmin ? "/users" : null);
   const [editing, setEditing] = useState<UserRow | "new" | null>(null);
@@ -134,12 +135,11 @@ export default function UsersPage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      <PageHeader
-        title="Users"
-        subtitle="Who can log in to the app"
-        actions={<Button onClick={() => setEditing("new")}>+ Add user</Button>}
-      />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-muted">Who can log in to the app</p>
+        <Button onClick={() => setEditing("new")}>+ Add user</Button>
+      </div>
       <Card>
         <ul className="divide-y divide-border">
           {users.map((u) => (

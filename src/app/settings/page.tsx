@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { INDIAN_STATES } from "@/lib/buyers";
 import type { CompanyProfile } from "@/lib/sales";
-import { Button, Card, ErrorBox, Field, Input, Loading, PageHeader, Select, Textarea } from "@/components/ui";
+import { useAuth } from "@/lib/use-auth";
+import { UserList } from "@/components/settings/UserList";
+import { Button, Card, ErrorBox, Field, Input, Loading, PageHeader, Segmented, Select, Textarea } from "@/components/ui";
 
 type Form = Record<keyof CompanyProfile, string | boolean | number>;
 
@@ -167,14 +170,50 @@ function CompanyForm({ company, onSaved }: { company: CompanyProfile; onSaved: (
   );
 }
 
-export default function SettingsPage() {
+function BusinessSettings() {
   const { data, error, mutate } = useSWR<CompanyProfile>("/settings/company");
   return (
-    <div className="mx-auto max-w-2xl">
-      <PageHeader title="Settings" subtitle="Your business details, printed on every invoice." />
+    <>
+      <p className="mb-4 text-sm text-muted">Your business details, printed on every invoice.</p>
       <ErrorBox error={error} />
       {!data && !error && <Loading />}
       {data && <CompanyForm company={data} onSaved={() => mutate()} />}
+    </>
+  );
+}
+
+type Tab = "business" | "users";
+
+function SettingsHome() {
+  const router = useRouter();
+  const { isAdmin } = useAuth();
+  const wanted = useSearchParams().get("tab");
+  // Only admins see the Users tab.
+  const tab: Tab = isAdmin && wanted === "users" ? "users" : "business";
+  return (
+    <div className="mx-auto max-w-2xl">
+      <PageHeader title="Settings" />
+      {isAdmin && (
+        <div className="mb-4">
+          <Segmented<Tab>
+            value={tab}
+            onChange={(t) => router.replace(t === "users" ? "/settings/?tab=users" : "/settings/")}
+            options={[
+              { value: "business", label: "Business" },
+              { value: "users", label: "Users" },
+            ]}
+          />
+        </div>
+      )}
+      {tab === "users" ? <UserList /> : <BusinessSettings />}
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <SettingsHome />
+    </Suspense>
   );
 }
