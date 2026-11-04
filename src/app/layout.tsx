@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import AppShell from "@/components/AppShell";
+import AuthGate from "@/components/AuthGate";
 import Providers from "@/components/Providers";
 import "./globals.css";
 
@@ -33,7 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full font-sans">
         <Providers>
-          <AppShell>{children}</AppShell>
+          <AuthGate>{children}</AuthGate>
         </Providers>
       </body>
     </html>

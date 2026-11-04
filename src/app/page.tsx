@@ -6,6 +6,7 @@ import { Badge, ErrorBox } from "@/components/ui";
 import { formatDay, formatINR } from "@/lib/format";
 import { saleStatus, type SaleListItem } from "@/lib/sales";
 import { formatStock, type Pack } from "@/lib/products";
+import { useAuth } from "@/lib/use-auth";
 import type { StockOverview, Unit } from "@/lib/stock";
 
 type SalesOverview = {
@@ -55,7 +56,7 @@ const QUICK_ACTIONS = [
     href: "/production/",
     icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
   },
-  { label: "View stock", href: "/stock/", icon: "M4 6h16M4 12h16M4 18h16" },
+  { label: "View stock", href: "/stock/", icon: "M4 6h16M4 12h16M4 18h16", readOnly: true },
   {
     label: "Add buyer",
     href: "/buyers/new/",
@@ -73,6 +74,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function DashboardPage() {
+  const { canEdit } = useAuth();
   const { data: sales, error } = useSWR<SalesOverview>("/sales/overview");
   const { data: buyers } = useSWR<BuyersOverview>("/buyers/overview");
   const { data: products } = useSWR<ProductsOverview>("/products/overview");
@@ -84,7 +86,7 @@ export default function DashboardPage() {
 
       {/* Hot keys: the actions used most often. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {QUICK_ACTIONS.map((a) => (
+        {QUICK_ACTIONS.filter((a) => canEdit || ("readOnly" in a && a.readOnly)).map((a) => (
           <Link
             key={a.href}
             href={a.href}

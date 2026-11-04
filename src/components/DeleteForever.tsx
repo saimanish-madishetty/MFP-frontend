@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
+import { useCanEdit } from "@/lib/use-auth";
 import { Button, ErrorBox, Sheet } from "@/components/ui";
 
 /**
@@ -29,6 +30,7 @@ export function DeleteForever({
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const canEdit = useCanEdit();
 
   const remove = async () => {
     setDeleting(true);
@@ -43,6 +45,7 @@ export function DeleteForever({
     }
   };
 
+  if (!canEdit) return null;
   return (
     <>
       <Button variant="ghost" size="sm" className="text-red-600 dark:text-red-400" onClick={() => setOpen(true)}>

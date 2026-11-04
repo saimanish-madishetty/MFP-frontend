@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useBackClose } from "@/lib/back-stack";
 import { BackLink } from "./BackLink";
 import { Dropdown, type DropdownProps } from "./Dropdown";
+import { useCanEdit } from "@/lib/use-auth";
 import { addDays, formatDay, todayIST } from "@/lib/format";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -47,6 +48,9 @@ export function ButtonLink({
   className?: string;
   children: React.ReactNode;
 }) {
+  // Links to add / edit pages are hidden from view-only users.
+  const canEdit = useCanEdit();
+  if (!canEdit && /\/(new|edit)\/?(\?|$)/.test(href)) return null;
   return (
     <Link
       href={href}

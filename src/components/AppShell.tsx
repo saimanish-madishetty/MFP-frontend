@@ -6,6 +6,9 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useBackClose } from "@/lib/back-stack";
 import { navItems } from "@/lib/nav";
+import { useAuth } from "@/lib/use-auth";
+import { AccountPanel } from "./Account";
+import { Badge } from "./ui";
 
 function Icon({ path }: { path: string }) {
   return (
@@ -17,10 +20,11 @@ function Icon({ path }: { path: string }) {
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { isAdmin } = useAuth();
 
   return (
-    <nav className="flex flex-col gap-1 p-3">
-      {navItems.map((item) => {
+    <nav className="flex flex-col gap-1 overflow-y-auto p-3">
+      {navItems.filter((item) => isAdmin || !item.adminOnly).map((item) => {
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href.replace(/\/$/, ""));
         const base = "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium";
 
@@ -64,16 +68,18 @@ function Brand() {
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { canEdit } = useAuth();
   useBackClose(drawerOpen, () => setDrawerOpen(false));
 
   return (
     <div className="flex min-h-dvh pl-safe-left pr-safe-right">
       {/* Desktop sidebar */}
-      <aside className="hidden w-60 shrink-0 border-r border-border bg-surface md:flex md:flex-col">
+      <aside className="hidden w-60 shrink-0 border-r border-border bg-surface md:sticky md:top-0 md:flex md:h-dvh md:flex-col">
         <div className="border-b border-border px-4 py-4">
           <Brand />
         </div>
         <NavLinks />
+        <AccountPanel />
       </aside>
 
       {/* Mobile drawer */}
@@ -85,6 +91,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Brand />
             </div>
             <NavLinks onNavigate={() => setDrawerOpen(false)} />
+            <AccountPanel />
           </aside>
         </div>
       )}
@@ -102,6 +109,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="md:hidden">
               <Brand />
             </div>
+            {!canEdit && (
+              <span className="ml-auto">
+                <Badge>View only</Badge>
+              </span>
+            )}
           </div>
         </header>
 
