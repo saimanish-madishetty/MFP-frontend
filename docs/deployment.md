@@ -122,18 +122,18 @@ cd C:\MFP\MFP-frontend
 npm run android:sync
 ```
 
-### 5.3 Create the signing key (once only)
-```powershell
-keytool -genkey -v -keystore C:\Users\samadishet\mfp-release.jks -alias mfp -keyalg RSA -keysize 2048 -validity 10000
-```
-- Keep `mfp-release.jks` **outside the repo** and **back it up** (e.g. Google Drive), together with its passwords.
-- If it's lost, new APKs can't be installed as updates over the existing app. You'd have to uninstall, which deletes the app's local data. Business data lives on the server and is safe either way.
+### 5.3 Signing key (already created)
+- Key: `C:\Users\samadishet\.mfp-secrets\mfp-release.jks` (alias `mfp`). Its passwords are in `C:\Users\samadishet\.mfp-secrets\android-signing.properties`, which `android/app/build.gradle` reads for release builds.
+- **Back up both files** (e.g. Google Drive). If they're lost, new APKs can't be installed as updates over the existing app. You'd have to uninstall, which deletes the app's local data. Business data lives on the server and is safe either way.
 
 ### 5.4 Build the signed APK
-1. `npm run android:open` (opens Android Studio).
-2. **Build → Generate Signed App Bundle / APK → APK**.
-3. Choose `mfp-release.jks`, alias `mfp`, enter the passwords → build variant **release** → **Create**.
-4. The APK is at `android\app\release\app-release.apk`.
+```powershell
+cd C:\MFP\MFP-frontend
+npm run android:sync
+cd android; .\gradlew.bat assembleRelease; cd ..
+Copy-Item android\app\build\outputs\apk\release\app-release.apk C:\MFP\apks\mfp-<versionName>-<commit>.apk
+```
+Production APKs are kept in `C:\MFP\apks\`.
 
 ### 5.5 Install on the phone
 1. Copy `app-release.apk` to the phone (USB, Google Drive or WhatsApp to yourself).

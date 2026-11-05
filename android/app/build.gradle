@@ -16,8 +16,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing key: kept outside the repo (see docs/deployment.md, "Android APK").
+    def signingFile = new File(System.getProperty("user.home"), ".mfp-secrets/android-signing.properties")
+    if (signingFile.exists()) {
+        def signing = new Properties()
+        signingFile.withInputStream { signing.load(it) }
+        signingConfigs {
+            release {
+                storeFile new File(signing.getProperty("storeFile"))
+                storePassword signing.getProperty("storePassword")
+                keyAlias signing.getProperty("keyAlias")
+                keyPassword signing.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         release {
+            if (signingFile.exists()) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
