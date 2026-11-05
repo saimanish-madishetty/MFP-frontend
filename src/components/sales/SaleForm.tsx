@@ -73,17 +73,30 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
   const paid = paidAmount === "" ? 0 : Number(paidAmount);
   const balance = Math.round((preview.grandTotal - paid) * 100) / 100;
 
+  const newLine = (p: Product, unit: Unit): LineState => {
+    const rate = priceFor(p, unit);
+    return { key: nextKey++, productId: p.id, unit, quantity: "", rate: rate === null ? "" : String(rate), discount: "" };
+  };
+
+  // Start in the product's usual unit (kg for vermicelli priced per kg), at its price for that unit.
   const addLine = (productId: number) => {
     const p = productById.get(productId);
-    if (!p) return;
-    // Start in the product's usual unit (kg for vermicelli priced per kg), at its price for that unit.
-    const unit = p.pack.defaultUnit;
-    const rate = priceFor(p, unit);
-    setLines((prev) => [
-      ...prev,
-      { key: nextKey++, productId, unit, quantity: "", rate: rate === null ? "" : String(rate), discount: "" },
-    ]);
+    if (p) setLines((prev) => [...prev, newLine(p, p.pack.defaultUnit)]);
   };
+
+  /** For a mix (20 packs + 5 pieces): a line in the product's other unit, right below `l`. */
+  const addOtherUnit = (l: LineState) => {
+    const p = lineProduct(l.productId);
+    const other = p?.pack.units.find((u) => u.unit !== l.unit)?.unit;
+    if (!p || !other) return;
+    setLines((prev) => {
+      const i = prev.findIndex((x) => x.key === l.key);
+      return [...prev.slice(0, i + 1), newLine(p, other), ...prev.slice(i + 1)];
+    });
+  };
+  /** A line directly after one for the same product in another unit is shown as part of it. */
+  const isMixPart = (i: number) =>
+    i > 0 && lines[i - 1].productId === lines[i].productId && lines[i - 1].unit !== lines[i].unit;
 
   /**
    * Switching pack ↔ piece (or bag ↔ kg) takes that unit's price (its own, or worked out),
@@ -177,27 +190,45 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
           // In stock units (pieces, kg, …), summed over every line of this product.
           const available = (p ? Number(p.currentQty) : 0) + (originalQty.get(l.productId) ?? 0);
           const wanted = lines.filter((x) => x.productId === l.productId).reduce((a, x) => a + stockOf(x), 0);
+          const part = isMixPart(i);
+          const hasPart = i + 1 < lines.length && isMixPart(i + 1);
+          const other = p?.pack.units.find((u) => u.unit !== l.unit)?.unit;
+          const remove = (
+            <button
+              type="button"
+              aria-label="Remove item"
+              onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key))}
+              className="rounded p-1 text-muted hover:bg-surface-2"
+            >
+              ✕
+            </button>
+          );
           return (
-            <div key={l.key} className="space-y-2 rounded-lg border border-border p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{name}</p>
-                  {p && (
-                    <p className="truncate text-xs text-muted">
-                      Invoice shows: {p.publicName} · {p.pack.description}
-                    </p>
-                  )}
+            <div
+              key={l.key}
+              className={`space-y-2 border border-border p-3 ${
+                part ? "-mt-3 rounded-b-lg border-t-0 pt-0" : hasPart ? "rounded-t-lg border-b-0" : "rounded-lg"
+              }`}
+            >
+              {part ? (
+                <div className="flex items-center justify-between gap-2 border-t border-dashed border-border pt-2">
+                  <p className="text-sm text-muted">+ {unitShort(l.unit)} of {name}</p>
+                  {remove}
                 </div>
-                <button
-                  type="button"
-                  aria-label="Remove item"
-                  onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key))}
-                  className="rounded p-1 text-muted hover:bg-surface-2"
-                >
-                  ✕
-                </button>
-              </div>
-              {p && p.pack.units.length > 1 && (
+              ) : (
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{name}</p>
+                    {p && (
+                      <p className="truncate text-xs text-muted">
+                        Invoice shows: {p.publicName} · {p.pack.description}
+                      </p>
+                    )}
+                  </div>
+                  {remove}
+                </div>
+              )}
+              {p && p.pack.units.length > 1 && !part && !hasPart && (
                 <Segmented<Unit>
                   value={l.unit}
                   onChange={(u) => changeUnit(l, u)}
@@ -239,13 +270,18 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
                   />
                 </Field>
               </div>
-              <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center justify-between gap-2 text-xs">
                 <span className={wanted > available ? "text-amber-600 dark:text-amber-400" : "text-muted"}>
-                  {!p
+                  {!p || hasPart
                     ? ""
                     : wanted > available
                       ? `Only ${formatStock(p, available)} ready. You can still save.`
                       : `${formatStock(p, available)} ready`}
+                  {p && other && !part && !hasPart && (
+                    <button type="button" onClick={() => addOtherUnit(l)} className="ml-2 font-medium text-brand">
+                      + Add {unitShort(other)}
+                    </button>
+                  )}
                 </span>
                 <span className="font-medium tabular-nums">{formatINR(preview.lineTotals[i] ?? 0)}</span>
               </div>

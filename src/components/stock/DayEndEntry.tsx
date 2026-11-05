@@ -4,30 +4,50 @@ import { useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import { formatStock, unitFactor, type Product } from "@/lib/products";
-import { formatQty, unitShort, type MaterialListItem, type ProductionDay } from "@/lib/stock";
+import { formatQty, unitShort, type MaterialListItem, type ProductionDay, type Unit } from "@/lib/stock";
 import { Button, ButtonLink, DateStepper, Empty, ErrorBox, Input, Loading, Select, Textarea } from "@/components/ui";
 
 /** A raw material used for a product. Untouched lines follow the recipe as the quantity made changes. */
 type MaterialLine = { materialId: number; used: string; touched: boolean };
-type ProductRow = { productId: number; made: string; materials: MaterialLine[] };
+/** `made` is in the sale unit (packs, bags); `extra` in stock units (pieces, kg) on top, for a mix. */
+type ProductRow = { productId: number; made: string; extra: string; materials: MaterialLine[] };
 type Draft = { products: ProductRow[]; items: Record<number, string>; notes: string };
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
-/** What the recipe says `made` (sale units) should take of a material, or null if unknown. */
-function expected(p: Product | undefined, materialId: number, made: string): number | null {
+/** Products counted in two units (pack + pieces, bag + kg) get a box for each. */
+const twoUnits = (p: Product) => p.pack.units.length > 1;
+
+/** Quantity made in stock units: packs × pieces per pack + loose pieces. */
+function stockMade(p: Product | undefined, row: ProductRow): number {
+  if (!p) return 0;
+  return round3((Number(row.made) || 0) * unitFactor(p, p.saleUnit) + (twoUnits(p) ? Number(row.extra) || 0 : 0));
+}
+
+/** What the recipe says `stock` (stock units made) should take of a material, or null if unknown. */
+function expected(p: Product | undefined, materialId: number, stock: number): number | null {
   const line = p?.materials.find((m) => m.materialId === materialId);
-  if (!p || !line?.qtyPerUnit || !(Number(made) > 0)) return null;
+  if (!p || !line?.qtyPerUnit || !(stock > 0)) return null;
   const perUnit = Number(line.qtyPerUnit) * (line.perPiece ? (p.piecesPerUnit ?? 1) : 1);
-  return round3(perUnit * Number(made));
+  return round3((perUnit * stock) / unitFactor(p, p.saleUnit));
+}
+
+/** Splits a saved stock quantity into whole packs + the pieces left over. */
+function split(p: Product | undefined, stockQty: string, quantity: string): { made: string; extra: string } {
+  if (!p || !twoUnits(p)) return { made: String(Number(quantity)), extra: "" };
+  const per = unitFactor(p, p.saleUnit);
+  const stock = Number(stockQty);
+  const whole = Math.floor(stock / per + 1e-9);
+  const rest = round3(stock - whole * per);
+  return { made: whole > 0 ? String(whole) : "", extra: rest > 0 ? String(rest) : "" };
 }
 
 /** The draft as saved on the server for this day. */
-function fromSaved(day: ProductionDay): Draft {
+function fromSaved(day: ProductionDay, productById: Map<number, Product>): Draft {
   return {
     products: (day.entry?.products ?? []).map((p) => ({
       productId: p.productId,
-      made: String(Number(p.quantity)),
+      ...split(productById.get(p.productId), p.stockQty, p.quantity),
       materials: p.materials.map((m) => ({ materialId: m.materialId, used: String(Number(m.quantity)), touched: true })),
     })),
     items: Object.fromEntries((day.entry?.items ?? []).map((i) => [i.materialId, String(Number(i.quantity))])),
@@ -53,21 +73,23 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
   if (dayError || matError) return <ErrorBox error={dayError ?? matError} />;
   if (!day || !materials || !products) return <Loading />;
 
-  const saved = fromSaved(day);
+  const productById = new Map(products.map((p) => [p.id, p]));
+  const saved = fromSaved(day, productById);
   const d = draft ?? saved;
   const edit = (fn: (d: Draft) => Draft) => {
     setJustSaved(false);
     setDraft(fn(structuredClone(d)));
   };
 
-  const productById = new Map(products.map((p) => [p.id, p]));
   const materialById = new Map(materials.map((m) => [m.id, m]));
-  const savedMade = new Map(saved.products.map((p) => [p.productId, Number(p.made)]));
+  // Saved quantities, in stock units.
+  const savedMade = new Map((day.entry?.products ?? []).map((p) => [p.productId, Number(p.stockQty)]));
   const savedItems = (id: number) => Number(saved.items[id] ?? 0);
+  const madeOf = (row: ProductRow) => stockMade(productById.get(row.productId), row);
 
   /** Quantity a line counts as used: what was typed, or the recipe amount if untouched. */
   const usedOf = (row: ProductRow, line: MaterialLine) =>
-    line.touched ? line.used : String(expected(productById.get(row.productId), line.materialId, row.made) ?? "");
+    line.touched ? line.used : String(expected(productById.get(row.productId), line.materialId, madeOf(row)) ?? "");
 
   const addProduct = (productId: number) =>
     edit((x) => {
@@ -76,6 +98,7 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
       x.products.push({
         productId,
         made: "",
+        extra: "",
         materials: recipe.map((m) => ({ materialId: m.materialId, used: "", touched: false })),
       });
       return x;
@@ -100,10 +123,10 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
         .map(([id, q]) => ({ materialId: Number(id), quantity: Number(q || 0) }))
         .filter((i) => i.quantity > 0),
       products: d.products
-        .filter((r) => Number(r.made) > 0)
+        .filter((r) => madeOf(r) > 0)
         .map((r) => ({
           productId: r.productId,
-          quantity: Number(r.made),
+          stockQty: madeOf(r),
           materials: r.materials
             .map((l) => ({ materialId: l.materialId, quantity: Number(usedOf(r, l) || 0) }))
             .filter((m) => m.quantity > 0),
@@ -166,9 +189,25 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
       {d.products.map((row) => {
         const p = productById.get(row.productId);
         if (!p) return null;
-        const per = unitFactor(p, p.saleUnit);
-        const ready = Number(p.currentQty) + (Number(row.made || 0) - (savedMade.get(p.id) ?? 0)) * per;
+        const made = madeOf(row);
+        const ready = Number(p.currentQty) + made - (savedMade.get(p.id) ?? 0);
         const lineIds = new Set(row.materials.map((l) => l.materialId));
+        const qtyBox = (field: "made" | "extra", unit: Unit) => (
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              placeholder="0"
+              aria-label={`${p.internalName} made (${unitShort(unit)})`}
+              value={row[field]}
+              onChange={(e) => setRow(p.id, (r) => void (r[field] = e.target.value))}
+              className={`w-20 text-right ${Number(row[field]) > 0 ? "border-green-600" : ""}`}
+            />
+            <span className="w-10 text-sm text-muted">{unitShort(unit)}</span>
+          </div>
+        );
         return (
           <div key={row.productId} className="space-y-2 rounded-xl border border-border bg-surface p-3">
             <div className="flex items-start gap-3">
@@ -178,19 +217,9 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
                   {p.pack.description} · ready now: {formatStock(p, ready)}
                 </p>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="any"
-                  placeholder="0"
-                  aria-label={`${p.internalName} made`}
-                  value={row.made}
-                  onChange={(e) => setRow(p.id, (r) => void (r.made = e.target.value))}
-                  className={`w-24 text-right ${Number(row.made) > 0 ? "border-green-600" : ""}`}
-                />
-                <span className="w-12 text-sm text-muted">{unitShort(p.saleUnit)}</span>
+              <div className="flex flex-col items-end gap-1.5">
+                {qtyBox("made", p.saleUnit)}
+                {twoUnits(p) && qtyBox("extra", p.pack.stockUnit)}
               </div>
               <button
                 type="button"
@@ -210,7 +239,7 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
               {row.materials.map((line) => {
                 const m = materialById.get(line.materialId);
                 const used = usedOf(row, line);
-                const exp = expected(p, line.materialId, row.made);
+                const exp = expected(p, line.materialId, made);
                 const waste = exp !== null && used !== "" ? round3(Number(used) - exp) : null;
                 return (
                   <div key={line.materialId} className="flex flex-wrap items-center gap-2">
@@ -297,7 +326,7 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
                     onClick={() =>
                       setRow(p.id, (r) => {
                         // Back to the recipe amounts (lines not in the recipe stay as typed).
-                        for (const l of r.materials) if (expected(p, l.materialId, "1") !== null) l.touched = false;
+                        for (const l of r.materials) if (expected(p, l.materialId, 1) !== null) l.touched = false;
                       })
                     }
                   >

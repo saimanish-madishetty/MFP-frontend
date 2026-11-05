@@ -130,8 +130,8 @@ function WasteText({ line }: { line: WastageLine }) {
 }
 
 /** Raw materials used vs. the recipe on each production day (from Add production). */
-function WastageCard({ productId, saleUnit }: { productId: number; saleUnit: string }) {
-  const { data } = useSWR<ProductWastage>(`/stock/production/wastage?productId=${productId}`);
+function WastageCard({ product }: { product: ProductDetail }) {
+  const { data } = useSWR<ProductWastage>(`/stock/production/wastage?productId=${product.id}`);
   if (!data || data.days.length === 0) return null;
   return (
     <Card className="p-4">
@@ -158,7 +158,7 @@ function WastageCard({ productId, saleUnit }: { productId: number; saleUnit: str
           <li key={day.date} className="py-2">
             <Link href={`/production/?date=${day.date}`} className="font-medium hover:text-brand">
               {formatDay(day.date)}
-              {day.made && ` · made ${formatQty(day.made)} ${saleUnit}`} ›
+              {day.madeStock && ` · made ${formatStock(product, day.madeStock)}`} ›
             </Link>
             {day.materials.map((m) => (
               <p key={m.material.id} className="flex justify-between gap-2 text-xs text-muted">
@@ -292,7 +292,7 @@ function ProductDetailView() {
         )}
       </Card>
 
-      <WastageCard productId={p.id} saleUnit={unitShort(p.saleUnit)} />
+      <WastageCard product={p} />
 
       {p.specs && p.specs.length > 0 && (
         <Card className="p-4">

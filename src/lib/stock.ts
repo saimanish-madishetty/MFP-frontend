@@ -42,6 +42,8 @@ export type ProductionDay = {
     products: {
       productId: number;
       quantity: string;
+      /** The same in stock units (pieces, kg, …) */
+      stockQty: string;
       materials: {
         materialId: number;
         quantity: string;
@@ -63,7 +65,8 @@ export type WastageLine = {
 };
 
 export type ProductWastage = {
-  days: { date: string; made: string | null; materials: WastageLine[] }[];
+  /** `made` in sale units, `madeStock` in stock units */
+  days: { date: string; made: string | null; madeStock: string | null; materials: WastageLine[] }[];
   totals: WastageLine[];
 };
 
