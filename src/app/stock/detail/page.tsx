@@ -54,7 +54,7 @@ function MaterialDetailView() {
     <div className="mx-auto max-w-3xl space-y-4">
       <PageHeader
         title={m.name}
-        back="/stock/"
+        back={m.type === "SUPPLY" ? "/stock/?tab=supply" : "/stock/?tab=raw"}
         subtitle={
           <span className="flex items-center gap-2">
             {TYPE_LABEL[m.type]} · measured in {unitShort(m.unit)}
@@ -167,7 +167,7 @@ function MaterialDetailView() {
         <DeleteForever
           name={m.name}
           path={`/materials/${m.id}`}
-          then={m.type === "SUPPLY" ? "/stock/?tab=supply" : "/stock/"}
+          then={m.type === "SUPPLY" ? "/stock/?tab=supply" : "/stock/?tab=raw"}
           refresh={(k) => k.startsWith("/materials") || k.startsWith("/stock") || k.startsWith("/products")}
         >
           <p>

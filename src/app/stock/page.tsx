@@ -11,7 +11,8 @@ type Tab = "raw" | "supply" | "products";
 function StockHome() {
   const router = useRouter();
   const param = useSearchParams().get("tab");
-  const tab: Tab = param === "supply" || param === "products" ? param : "raw";
+  // Products is the first tab and the default (/stock/).
+  const tab: Tab = param === "raw" || param === "supply" ? param : "products";
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -19,11 +20,11 @@ function StockHome() {
       <div className="mb-4">
         <Segmented<Tab>
           value={tab}
-          onChange={(t) => router.replace(t === "raw" ? "/stock/" : `/stock/?tab=${t}`)}
+          onChange={(t) => router.replace(t === "products" ? "/stock/" : `/stock/?tab=${t}`)}
           options={[
+            { value: "products", label: "Products" },
             { value: "raw", label: "Raw materials" },
             { value: "supply", label: "Supplies" },
-            { value: "products", label: "Products" },
           ]}
         />
       </div>

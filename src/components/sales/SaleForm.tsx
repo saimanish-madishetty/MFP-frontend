@@ -113,7 +113,10 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
   };
   /** A line directly after one for the same product in another unit is shown as part of it. */
   const isMixPart = (i: number) =>
-    i > 0 && lines[i - 1].productId === lines[i].productId && lines[i - 1].unit !== lines[i].unit;
+    i > 0 &&
+    i < lines.length &&
+    lines[i - 1].productId === lines[i].productId &&
+    lines[i - 1].unit !== lines[i].unit;
 
   /** The other half of a pack + pieces item, if there is one. */
   const partner = (i: number) => (isMixPart(i) ? lines[i - 1] : isMixPart(i + 1) ? lines[i + 1] : undefined);

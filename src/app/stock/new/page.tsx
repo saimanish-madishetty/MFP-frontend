@@ -9,7 +9,7 @@ function NewMaterial() {
   const type = useSearchParams().get("type") === "SUPPLY" ? "SUPPLY" : "RAW";
   return (
     <div className="mx-auto max-w-2xl">
-      <PageHeader title="Add material" back="/stock/" />
+      <PageHeader title="Add material" back="/stock/?tab=raw" />
       <MaterialForm defaultType={type} />
     </div>
   );

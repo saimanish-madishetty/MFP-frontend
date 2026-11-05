@@ -206,7 +206,7 @@ export default function DashboardPage() {
           <StatCard
             label="Low materials"
             value={s ? String(s.lowStock.length + s.negativeStock.length) : "—"}
-            href="/stock/"
+            href="/stock/?tab=raw"
             tone={s && s.negativeStock.length > 0 ? "red" : undefined}
             hint={[...(s?.negativeStock ?? []), ...(s?.lowStock ?? [])].map((m) => m.name).join(", ") || undefined}
           />
