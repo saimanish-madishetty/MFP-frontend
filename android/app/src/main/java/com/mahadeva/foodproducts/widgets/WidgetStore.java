@@ -28,6 +28,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Shared state for the home-screen widgets: the login (handed over by the app through WidgetsPlugin),
@@ -94,13 +95,39 @@ public final class WidgetStore {
                 || m.getAppWidgetIds(new ComponentName(c, OrdersWidget.class)).length > 0;
     }
 
-    /** Fetches fresh data in the background (WorkManager), if any widget is on the home screen. */
+    /** Fetches fresh data now (↻, login, leaving the app). */
     static void refresh(Context c) {
-        if (!hasWidgets(c) || prefs(c).getString("token", null) == null) return;
-        prefs(c).edit().putString("status", LOADING).apply();
+        refresh(c, true);
+    }
+
+    /**
+     * Fetches fresh data in the background (WorkManager), if any widget is on the home screen.
+     * Automatic refreshes (`force` false, Android's periodic update) are skipped when the last
+     * try was less than {@link #AUTO_GAP_MS} ago, so nothing can call the backend in a loop.
+     */
+    static void refresh(Context c, boolean force) {
+        keepWorkManagerAlive(c);
+        SharedPreferences p = prefs(c);
+        if (!hasWidgets(c) || p.getString("token", null) == null) return;
+        long now = System.currentTimeMillis();
+        if (!force && now - p.getLong("lastTry", 0) < AUTO_GAP_MS) return;
+        p.edit().putString("status", LOADING).putLong("lastTry", now).apply();
         renderText(c);
         WorkManager.getInstance(c).enqueueUniqueWork(
                 WORK, ExistingWorkPolicy.KEEP, new OneTimeWorkRequest.Builder(RefreshWorker.class).build());
+    }
+
+    /** Minimum time between automatic refreshes. */
+    private static final long AUTO_GAP_MS = 15 * 60 * 1000L;
+
+    /** See {@link KeepAliveWorker}: always one far-future job queued. */
+    private static void keepWorkManagerAlive(Context c) {
+        WorkManager.getInstance(c).enqueueUniqueWork(
+                WORK + "-keepalive",
+                ExistingWorkPolicy.KEEP,
+                new OneTimeWorkRequest.Builder(KeepAliveWorker.class)
+                        .setInitialDelay(3650, TimeUnit.DAYS)
+                        .build());
     }
 
     /** Runs on a background thread (RefreshWorker). The server may take ~1 min to wake up. */

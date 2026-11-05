@@ -10,11 +10,14 @@ import android.os.Bundle;
 abstract class BaseWidget extends AppWidgetProvider {
     abstract WidgetStore.Kind kind();
 
-    /** Every ~30 minutes (Android's minimum) and when the widget is added. */
+    /**
+     * Every ~30 minutes (Android's minimum), when the widget is added, and whenever Android thinks
+     * the app changed. Automatic, so it fetches at most every 15 minutes (see WidgetStore.refresh).
+     */
     @Override
     public void onUpdate(Context c, AppWidgetManager m, int[] ids) {
         for (int id : ids) WidgetStore.render(c, m, id, kind());
-        WidgetStore.refresh(c);
+        WidgetStore.refresh(c, false);
     }
 
     /** Resized: show as many rows as now fit. */
