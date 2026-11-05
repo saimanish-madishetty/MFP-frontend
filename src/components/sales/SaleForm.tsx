@@ -166,7 +166,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
     <form onSubmit={submit} className="space-y-4 pb-28">
       <Card className="space-y-4 p-4">
         <Field label="Buyer">
-          <Select required value={buyerId} onChange={(e) => setBuyerId(e.target.value ? Number(e.target.value) : "")}>
+          <Select required searchable value={buyerId} onChange={(e) => setBuyerId(e.target.value ? Number(e.target.value) : "")}>
             <option value="">Choose buyer…</option>
             {activeBuyers.map((b) => (
               <option key={b.id} value={b.id}>
@@ -298,7 +298,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
             </div>
           );
         })}
-        <Select value="" onChange={(e) => e.target.value && addLine(Number(e.target.value))}>
+        <Select searchable value="" onChange={(e) => e.target.value && addLine(Number(e.target.value))}>
           <option value="">+ Add product…</option>
           {products
             .filter((p) => p.active)

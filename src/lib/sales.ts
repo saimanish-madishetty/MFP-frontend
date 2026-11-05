@@ -104,6 +104,17 @@ export type SaleDetail = {
 
 export type SaleStatusFilter = "ALL" | "UNPAID" | "OVERDUE" | "PAID" | "CANCELLED";
 
+/** GET /sales/search: one page of invoices; count / total / due are over every match. */
+export type SaleSearch = {
+  items: SaleListItem[];
+  count: number;
+  total: string;
+  due: string;
+  hasMore: boolean;
+};
+
+export type SaleSort = "new" | "old" | "high" | "low";
+
 export function saleStatus(s: {
   cancelledAt?: string | null;
   cancelled?: boolean;
