@@ -7,11 +7,11 @@ import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import type { Buyer } from "@/lib/buyers";
 import { formatINR, todayIST } from "@/lib/format";
-import { formatStock, perUnit, priceFor, unitFactor, unitSingular, type Product } from "@/lib/products";
+import { formatStock, perUnit, priceFor, unitFactor, type Product } from "@/lib/products";
 import { previewInvoice, type CompanyProfile, type SaleDetail } from "@/lib/sales";
 import { unitShort, type Unit } from "@/lib/stock";
 import { PAYMENT_MODES, type PaymentMode } from "@/lib/workers";
-import { Button, Card, ErrorBox, Field, Input, Loading, Row, Segmented, Select, Textarea } from "@/components/ui";
+import { Button, Card, ErrorBox, Field, Input, Loading, Row, Select, Textarea } from "@/components/ui";
 
 /** `unit` is what quantity and rate are in: the product's pack/bag, or a piece/kg. */
 type LineState = { key: number; productId: number; unit: Unit; quantity: string; rate: string; discount: string };
@@ -43,10 +43,32 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
   const [paidMode, setPaidMode] = useState<PaymentMode>("CASH");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // Saved lines get their pack line put back once products load (see below).
+  const [arranged, setArranged] = useState(!sale);
 
   if (!buyers || !products || !company) return <Loading />;
 
   const productById = new Map(products.map((p) => [p.id, p]));
+
+  const newLine = (p: Product, unit: Unit): LineState => {
+    const rate = priceFor(p, unit);
+    return { key: nextKey++, productId: p.id, unit, quantity: "", rate: rate === null ? "" : String(rate), discount: "" };
+  };
+
+  // An item is a pack line, optionally with a pieces part right below it. A saved pieces-only
+  // line gets an empty pack line above it so it shows the same way.
+  if (!arranged) {
+    setArranged(true);
+    setLines((prev) =>
+      prev.flatMap((l, i) => {
+        const p = productById.get(l.productId);
+        const before = prev[i - 1];
+        const orphan =
+          p && l.unit !== p.saleUnit && !(before?.productId === l.productId && before.unit === p.saleUnit);
+        return orphan ? [newLine(p, p.saleUnit), l] : [l];
+      }),
+    );
+  }
   // Archived products already on this invoice still need a name.
   const lineProduct = (id: number) => productById.get(id);
   // Stock (in stock units) this invoice already took; when editing, it counts as available again.
@@ -73,15 +95,10 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
   const paid = paidAmount === "" ? 0 : Number(paidAmount);
   const balance = Math.round((preview.grandTotal - paid) * 100) / 100;
 
-  const newLine = (p: Product, unit: Unit): LineState => {
-    const rate = priceFor(p, unit);
-    return { key: nextKey++, productId: p.id, unit, quantity: "", rate: rate === null ? "" : String(rate), discount: "" };
-  };
-
-  // Start in the product's usual unit (kg for vermicelli priced per kg), at its price for that unit.
+  // Starts in packs (bags); "+ Add pcs" adds pieces (kg) below, and packs can be left blank.
   const addLine = (productId: number) => {
     const p = productById.get(productId);
-    if (p) setLines((prev) => [...prev, newLine(p, p.pack.defaultUnit)]);
+    if (p) setLines((prev) => [...prev, newLine(p, p.saleUnit)]);
   };
 
   /** For a mix (20 packs + 5 pieces): a line in the product's other unit, right below `l`. */
@@ -98,19 +115,10 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
   const isMixPart = (i: number) =>
     i > 0 && lines[i - 1].productId === lines[i].productId && lines[i - 1].unit !== lines[i].unit;
 
-  /**
-   * Switching pack ↔ piece (or bag ↔ kg) takes that unit's price (its own, or worked out),
-   * falling back to converting the current rate.
-   */
-  const changeUnit = (l: LineState, unit: Unit) => {
-    const p = lineProduct(l.productId);
-    if (!p || unit === l.unit) return;
-    const listed = priceFor(p, unit);
-    const converted =
-      l.rate === "" ? null : Math.round(((Number(l.rate) * unitFactor(p, unit)) / unitFactor(p, l.unit)) * 100) / 100;
-    const rate = listed ?? converted;
-    update(l.key, { unit, rate: rate === null ? "" : String(rate) });
-  };
+  /** The other half of a pack + pieces item, if there is one. */
+  const partner = (i: number) => (isMixPart(i) ? lines[i - 1] : isMixPart(i + 1) ? lines[i + 1] : undefined);
+  const filled = (l?: LineState) => Number(l?.quantity) > 0;
+  const items = lines.filter((_, i) => !isMixPart(i)).length;
   const update = (key: number, patch: Partial<LineState>) =>
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -122,7 +130,8 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
       buyerId,
       date,
       notes: notes.trim() || undefined,
-      lines: lines.map((l) => ({
+      // A blank packs (or pieces) half of an item isn't sent.
+      lines: lines.filter(filled).map((l) => ({
         productId: l.productId,
         unit: l.unit,
         quantity: Number(l.quantity),
@@ -193,11 +202,14 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
           const part = isMixPart(i);
           const hasPart = i + 1 < lines.length && isMixPart(i + 1);
           const other = p?.pack.units.find((u) => u.unit !== l.unit)?.unit;
+          const mate = partner(i);
+          // ✕ on the item removes it with its pieces part; ✕ on the pieces part removes just that.
+          const gone = new Set([l.key, ...(!part && mate ? [mate.key] : [])]);
           const remove = (
             <button
               type="button"
-              aria-label="Remove item"
-              onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key))}
+              aria-label={part ? `Remove ${unitShort(l.unit)}` : "Remove item"}
+              onClick={() => setLines((prev) => prev.filter((x) => !gone.has(x.key)))}
               className="rounded p-1 text-muted hover:bg-surface-2"
             >
               ✕
@@ -228,13 +240,6 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
                   {remove}
                 </div>
               )}
-              {p && p.pack.units.length > 1 && !part && !hasPart && (
-                <Segmented<Unit>
-                  value={l.unit}
-                  onChange={(u) => changeUnit(l, u)}
-                  options={p.pack.units.map((u) => ({ value: u.unit, label: `By ${unitSingular(u.unit)}` }))}
-                />
-              )}
               <div className="grid grid-cols-3 gap-2">
                 <Field label={`Qty (${unitShort(l.unit)})`}>
                   <Input
@@ -242,7 +247,9 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
                     inputMode="decimal"
                     min={0}
                     step="any"
-                    required
+                    // Packs can stay blank when selling only pieces (and the other way round).
+                    required={!filled(mate)}
+                    placeholder={mate ? "0" : undefined}
                     value={l.quantity}
                     onChange={(e) => update(l.key, { quantity: e.target.value })}
                   />
@@ -253,7 +260,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
                     inputMode="decimal"
                     min={0}
                     step="0.01"
-                    required
+                    required={filled(l) || !mate}
                     value={l.rate}
                     onChange={(e) => update(l.key, { rate: e.target.value })}
                   />
@@ -294,7 +301,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
             .filter((p) => p.active)
             .map((p) => (
               <option key={p.id} value={p.id}>
-                {p.internalName} · {formatINR(priceFor(p, p.pack.defaultUnit) ?? 0)} {perUnit(p.pack.defaultUnit)}
+                {p.internalName} · {formatINR(priceFor(p, p.saleUnit) ?? 0)} {perUnit(p.saleUnit)}
               </option>
             ))}
         </Select>
@@ -412,7 +419,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
               <p className="text-lg font-semibold tabular-nums">
                 {formatINR(preview.grandTotal)}{" "}
                 <span className="text-sm font-normal text-muted">
-                  · {lines.length} item{lines.length === 1 ? "" : "s"}
+                  · {items} item{items === 1 ? "" : "s"}
                 </span>
               </p>
             )}
