@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import useSWR from "swr";
 import type { Buyer } from "@/lib/buyers";
+import { searchFilter } from "@/lib/search";
 import { BalanceText } from "@/components/buyers/BalanceText";
 import { Badge, ButtonLink, Empty, ErrorBox, Input, Loading, PageHeader, Segmented } from "@/components/ui";
 
@@ -15,16 +16,7 @@ export default function BuyersPage() {
   const [showArchived, setShowArchived] = useState(false);
   const { data, error, isLoading } = useSWR<Buyer[]>(`/buyers${showArchived ? "?includeInactive=true" : ""}`);
   const term = search.trim().toLowerCase();
-  const shown = (data ?? [])
-    .filter(
-      (b) =>
-        !term ||
-        b.name.toLowerCase().includes(term) ||
-        b.invoiceName?.toLowerCase().includes(term) ||
-        b.city?.toLowerCase().includes(term) ||
-        b.phone?.includes(term),
-    )
-    .sort((a, b) => (sort === "due" ? Number(b.summary.balance) - Number(a.summary.balance) : 0));
+  const shown = searchFilter(data ?? [], term, (b) => [b.name, b.invoiceName, b.city, b.phone]).sort((a, b) => (sort === "due" ? Number(b.summary.balance) - Number(a.summary.balance) : 0));
 
   return (
     <div className="mx-auto max-w-3xl space-y-3">

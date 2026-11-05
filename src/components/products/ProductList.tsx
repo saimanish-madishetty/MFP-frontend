@@ -5,6 +5,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { formatINR } from "@/lib/format";
 import { formatStock, perUnit, type Product } from "@/lib/products";
+import { searchFilter } from "@/lib/search";
 import { Badge, ButtonLink, Empty, ErrorBox, Input, Loading } from "@/components/ui";
 
 /** Searchable product cards with ready stock. Used on the Products page and the Stock → Products tab. */
@@ -13,13 +14,7 @@ export function ProductList() {
   const [showArchived, setShowArchived] = useState(false);
   const { data, error, isLoading } = useSWR<Product[]>(`/products${showArchived ? "?includeInactive=true" : ""}`);
   const term = search.trim().toLowerCase();
-  const shown = (data ?? []).filter(
-    (p) =>
-      !term ||
-      p.internalName.toLowerCase().includes(term) ||
-      p.publicName.toLowerCase().includes(term) ||
-      p.code?.toLowerCase().includes(term),
-  );
+  const shown = searchFilter(data ?? [], term, (p) => [p.internalName, p.publicName, p.code]);
 
   return (
     <div className="space-y-3">

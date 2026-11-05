@@ -3,6 +3,7 @@
 import { Children, Fragment, isValidElement, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useBackClose } from "@/lib/back-stack";
+import { searchFilter } from "@/lib/search";
 
 /**
  * The app's dropdown. Drop-in for `<select>`: same `value` / `onChange(e.target.value)` and
@@ -121,7 +122,7 @@ export function Dropdown({
   const listId = useId();
 
   const q = query.trim().toLowerCase();
-  const shown = q ? listed.filter((o) => o.label.toLowerCase().includes(q)) : listed;
+  const shown = searchFilter(listed, q, (o) => [o.label]);
 
   const close = (refocus = true) => {
     setOpen(false);

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import useSWR from "swr";
 import { formatINR } from "@/lib/format";
+import { searchFilter } from "@/lib/search";
 import { formatQty, unitShort, type MaterialListItem, type MaterialType } from "@/lib/stock";
 import { Badge, ButtonLink, Empty, ErrorBox, Input, Loading } from "@/components/ui";
 import { StockBadge, qtyTone } from "./StockBadge";
@@ -17,7 +18,11 @@ export function MaterialList({ type }: { type: MaterialType }) {
   );
 
   const term = search.trim().toLowerCase();
-  const shown = (data ?? []).filter((m) => m.type === type && (!term || m.name.toLowerCase().includes(term)));
+  const shown = searchFilter(
+    (data ?? []).filter((m) => m.type === type),
+    term,
+    (m) => [m.name],
+  );
 
   return (
     <div className="space-y-3">
