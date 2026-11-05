@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_stock_label">Stock</string>
+    <string name="widget_stock_description">Products in stock</string>
+    <string name="widget_orders_label">Orders</string>
+    <string name="widget_orders_description">Open orders, soonest first</string>
+</resources>

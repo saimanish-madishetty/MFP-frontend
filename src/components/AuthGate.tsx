@@ -7,6 +7,8 @@ import { ApiError } from "@/lib/api";
 import { LOGGED_OUT_EVENT, clearToken, getToken, type User } from "@/lib/auth";
 import { AuthContext, type AuthState } from "@/lib/use-auth";
 import AppShell from "@/components/AppShell";
+import { WidgetBridge } from "@/components/WidgetBridge";
+import { syncWidgetLogin } from "@/lib/widgets";
 import { Button, ErrorBox, Loading } from "@/components/ui";
 
 /** Fired after logging in, so the gate picks up the new token. */
@@ -47,6 +49,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     clearToken();
+    syncWidgetLogin(null);
     // Drop everything cached for this user.
     mutate(() => true, undefined, { revalidate: false });
     window.dispatchEvent(new Event(LOGGED_OUT_EVENT));
@@ -76,6 +79,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }
   return (
     <AuthContext.Provider value={auth}>
+      <WidgetBridge token={token} />
       <AppShell>
         {!auth.canEdit && EDIT_PAGE.test(pathname) ? (
           <p className="mx-auto mt-16 max-w-sm rounded-lg border border-border bg-surface p-4 text-center text-sm">

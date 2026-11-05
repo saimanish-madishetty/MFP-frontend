@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same colours as the app (src/app/globals.css). Dark mode in values-night. -->
+<resources>
+    <color name="widget_bg">#F7FFFFFF</color>
+    <color name="widget_text">#171717</color>
+    <color name="widget_muted">#6B7280</color>
+    <color name="widget_brand">#B45309</color>
+</resources>
