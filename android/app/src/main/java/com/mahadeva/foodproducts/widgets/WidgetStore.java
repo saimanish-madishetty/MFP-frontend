@@ -32,6 +32,9 @@ import java.util.List;
 /**
  * Shared state for the home-screen widgets: the login (handed over by the app through WidgetsPlugin),
  * the last data fetched from GET /widgets, and drawing both widgets from it.
+ *
+ * To avoid flicker, the list is only reloaded when the data really changed; "Updating…" and
+ * "Updated …" only touch the header and footer text (partial update).
  */
 public final class WidgetStore {
     private WidgetStore() {}
@@ -50,6 +53,17 @@ public final class WidgetStore {
 
     enum Kind { STOCK, ORDERS }
 
+    /** One list row and a key for it (same content → same key, so unchanged rows aren't redrawn). */
+    static final class Row {
+        final long id;
+        final RemoteViews views;
+
+        Row(long id, RemoteViews views) {
+            this.id = id;
+            this.views = views;
+        }
+    }
+
     private static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
@@ -58,17 +72,18 @@ public final class WidgetStore {
 
     static void setLogin(Context c, String token, String apiUrl) {
         SharedPreferences p = prefs(c);
-        boolean sameUser = token.equals(p.getString("token", null));
+        boolean sameLogin = token.equals(p.getString("token", null));
         SharedPreferences.Editor e = p.edit().putString("token", token).putString("apiUrl", apiUrl);
-        if (!sameUser) e.remove("data").remove("at");
+        if (!sameLogin) e.remove("data").remove("at");
         e.apply();
+        if (!sameLogin) renderAll(c, true);
         refresh(c);
     }
 
     /** Logged out: forget the login and the data, so the widgets don't show it any more. */
     static void clearLogin(Context c) {
         prefs(c).edit().clear().apply();
-        renderAll(c);
+        renderAll(c, true);
     }
 
     // ── Refreshing ───────────────────────────────────────────
@@ -81,12 +96,9 @@ public final class WidgetStore {
 
     /** Fetches fresh data in the background (WorkManager), if any widget is on the home screen. */
     static void refresh(Context c) {
-        if (!hasWidgets(c) || prefs(c).getString("token", null) == null) {
-            renderAll(c);
-            return;
-        }
+        if (!hasWidgets(c) || prefs(c).getString("token", null) == null) return;
         prefs(c).edit().putString("status", LOADING).apply();
-        renderAll(c);
+        renderText(c);
         WorkManager.getInstance(c).enqueueUniqueWork(
                 WORK, ExistingWorkPolicy.KEEP, new OneTimeWorkRequest.Builder(RefreshWorker.class).build());
     }
@@ -98,6 +110,7 @@ public final class WidgetStore {
         String apiUrl = p.getString("apiUrl", null);
         if (token == null || apiUrl == null) return;
         String status = ERROR;
+        boolean changed = false;
         HttpURLConnection con = null;
         try {
             con = (HttpURLConnection) new URL(apiUrl + "/widgets").openConnection();
@@ -109,12 +122,13 @@ public final class WidgetStore {
             if (code == 401) {
                 // Login ended (PIN reset, access turned off, …): the app asks to log in again.
                 p.edit().clear().apply();
-                renderAll(c);
+                renderAll(c, true);
                 return;
             }
             if (code == 200) {
                 String body = read(con.getInputStream());
                 new JSONObject(body); // must be valid before it replaces the last good data
+                changed = !body.equals(p.getString("data", null));
                 p.edit().putString("data", body).putLong("at", System.currentTimeMillis()).apply();
                 status = OK;
             }
@@ -124,7 +138,8 @@ public final class WidgetStore {
             if (con != null) con.disconnect();
         }
         p.edit().putString("status", status).apply();
-        renderAll(c);
+        if (changed) renderAll(c, true);
+        else renderText(c);
     }
 
     private static String read(InputStream in) throws java.io.IOException {
@@ -136,25 +151,39 @@ public final class WidgetStore {
 
     // ── Drawing ──────────────────────────────────────────────
 
-    static void renderAll(Context c) {
-        render(c, Kind.STOCK);
-        render(c, Kind.ORDERS);
-    }
-
-    static void render(Context c, Kind kind) {
-        AppWidgetManager m = AppWidgetManager.getInstance(c);
+    private static int[] ids(Context c, AppWidgetManager m, Kind kind) {
         Class<?> cls = kind == Kind.STOCK ? StockWidget.class : OrdersWidget.class;
-        int[] ids = m.getAppWidgetIds(new ComponentName(c, cls));
-        for (int id : ids) render(c, m, id, kind);
+        return m.getAppWidgetIds(new ComponentName(c, cls));
     }
 
+    /** Redraws both widgets; `dataChanged` also reloads their lists. */
+    static void renderAll(Context c, boolean dataChanged) {
+        AppWidgetManager m = AppWidgetManager.getInstance(c);
+        for (Kind kind : Kind.values()) {
+            int[] ids = ids(c, m, kind);
+            for (int id : ids) m.updateAppWidget(id, build(c, id, kind));
+            if (dataChanged && ids.length > 0) m.notifyAppWidgetViewDataChanged(ids, R.id.widget_list);
+        }
+    }
+
+    /** Full draw of one widget (added, resized, every 30 min). The list keeps its rows. */
     static void render(Context c, AppWidgetManager m, int id, Kind kind) {
         m.updateAppWidget(id, build(c, id, kind));
-        // Reload the scrolling list (WidgetListService) from the latest data.
-        m.notifyAppWidgetViewDataChanged(id, R.id.widget_list);
     }
 
-    /** Header, footer and the empty-list message; the rows come from WidgetListService. */
+    /** Only the header / footer / empty-list text: no flicker. */
+    private static void renderText(Context c) {
+        AppWidgetManager m = AppWidgetManager.getInstance(c);
+        for (Kind kind : Kind.values()) {
+            for (int id : ids(c, m, kind)) {
+                RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_list);
+                setText(c, v, kind);
+                m.partiallyUpdateAppWidget(id, v);
+            }
+        }
+    }
+
+    /** Header, footer, click actions and the list adapter; the rows come from WidgetListService. */
     private static RemoteViews build(Context c, int widgetId, Kind kind) {
         boolean stock = kind == Kind.STOCK;
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_list);
@@ -164,7 +193,8 @@ public final class WidgetStore {
         v.setOnClickPendingIntent(R.id.widget_message, open);
         v.setOnClickPendingIntent(R.id.widget_refresh, refreshIntent(c, stock ? StockWidget.class : OrdersWidget.class, stock ? 3 : 4));
 
-        // The list: one adapter per widget (the data URI keeps the intents apart).
+        // The list: one adapter per widget (the data URI keeps the intents apart). Setting the same
+        // adapter again keeps the list as it is.
         Intent adapter = new Intent(c, WidgetListService.class)
                 .putExtra(WidgetListService.EXTRA_KIND, kind.name())
                 .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
@@ -174,20 +204,27 @@ public final class WidgetStore {
         // Tapping a row opens the same page (rows fill in this template).
         v.setPendingIntentTemplate(R.id.widget_list, openApp(c, stock ? "/stock/?tab=products" : "/orders/", stock ? 5 : 6, true));
 
+        setText(c, v, kind);
+        return v;
+    }
+
+    /** Summary, "Updated …" footer and the empty-list message, from the stored data and status. */
+    private static void setText(Context c, RemoteViews v, Kind kind) {
+        boolean stock = kind == Kind.STOCK;
         SharedPreferences p = prefs(c);
         if (p.getString("token", null) == null) {
             v.setTextViewText(R.id.widget_summary, "");
             v.setTextViewText(R.id.widget_message, "Open the app and log in to see " + (stock ? "stock." : "orders."));
             v.setTextViewText(R.id.widget_updated, "");
-            return v;
+            return;
         }
         String status = p.getString("status", OK);
         String raw = p.getString("data", null);
         v.setTextViewText(R.id.widget_updated, footer(c, status, p.getLong("at", 0)));
-        v.setTextViewText(R.id.widget_summary, "");
         if (raw == null) {
+            v.setTextViewText(R.id.widget_summary, "");
             v.setTextViewText(R.id.widget_message, LOADING.equals(status) ? "Loading…" : "Couldn't load. Tap ↻ to try again.");
-            return v;
+            return;
         }
         try {
             JSONObject data = new JSONObject(raw);
@@ -200,20 +237,20 @@ public final class WidgetStore {
                 v.setTextViewText(R.id.widget_message, "No products yet.");
             } else {
                 JSONObject o = data.getJSONObject("orders");
-                int open2 = o.getInt("open");
+                int open = o.getInt("open");
                 int late = o.getInt("late");
-                v.setTextViewText(R.id.widget_summary, open2 + " open" + (late > 0 ? " · " + late + " late" : ""));
+                v.setTextViewText(R.id.widget_summary, open + " open" + (late > 0 ? " · " + late + " late" : ""));
                 v.setTextViewText(R.id.widget_message, "No open orders.");
             }
         } catch (Exception e) {
+            v.setTextViewText(R.id.widget_summary, "");
             v.setTextViewText(R.id.widget_message, "Couldn't read the data. Tap ↻ to try again.");
         }
-        return v;
     }
 
     /** Rows for a widget's list (called by WidgetListService on a background thread). */
-    static List<RemoteViews> rows(Context c, Kind kind) {
-        List<RemoteViews> rows = new ArrayList<>();
+    static List<Row> rows(Context c, Kind kind) {
+        List<Row> rows = new ArrayList<>();
         SharedPreferences p = prefs(c);
         String raw = p.getString("data", null);
         if (p.getString("token", null) == null || raw == null) return rows;
@@ -239,7 +276,8 @@ public final class WidgetStore {
                     else if (it.getBoolean("dueToday")) row.setTextColor(R.id.row_value, AMBER);
                 }
                 row.setOnClickFillInIntent(R.id.row_root, new Intent());
-                rows.add(row);
+                // Content + position: a row that didn't change keeps its id.
+                rows.add(new Row(((long) i << 32) ^ (it.toString().hashCode() & 0xffffffffL), row));
             }
         } catch (Exception ignored) {
             // Bad data: show the list empty (the header says so).
