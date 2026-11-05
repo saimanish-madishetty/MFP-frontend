@@ -40,6 +40,11 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_orders_info" />
         </receiver>
+        <!-- Rows of the widgets' scrolling lists -->
+        <service
+            android:name=".widgets.WidgetListService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

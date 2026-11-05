@@ -8,7 +8,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
-import android.os.Bundle;
 import android.text.format.DateUtils;
 import android.view.View;
 import android.widget.RemoteViews;
@@ -27,6 +26,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Shared state for the home-screen widgets: the login (handed over by the app through WidgetsPlugin),
@@ -143,98 +144,107 @@ public final class WidgetStore {
     static void render(Context c, Kind kind) {
         AppWidgetManager m = AppWidgetManager.getInstance(c);
         Class<?> cls = kind == Kind.STOCK ? StockWidget.class : OrdersWidget.class;
-        for (int id : m.getAppWidgetIds(new ComponentName(c, cls))) render(c, m, id, kind);
+        int[] ids = m.getAppWidgetIds(new ComponentName(c, cls));
+        for (int id : ids) render(c, m, id, kind);
     }
 
     static void render(Context c, AppWidgetManager m, int id, Kind kind) {
-        m.updateAppWidget(id, build(c, kind, rowsThatFit(m, id, kind)));
+        m.updateAppWidget(id, build(c, id, kind));
+        // Reload the scrolling list (WidgetListService) from the latest data.
+        m.notifyAppWidgetViewDataChanged(id, R.id.widget_list);
     }
 
-    /** As many rows as the widget's height allows. */
-    private static int rowsThatFit(AppWidgetManager m, int id, Kind kind) {
-        Bundle o = m.getAppWidgetOptions(id);
-        int height = o == null ? 0 : o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
-        if (height <= 0) height = 180;
-        int rowHeight = kind == Kind.STOCK ? 24 : 38;
-        return Math.max(1, Math.min(12, (height - 64) / rowHeight));
-    }
-
-    private static RemoteViews build(Context c, Kind kind, int maxRows) {
+    /** Header, footer and the empty-list message; the rows come from WidgetListService. */
+    private static RemoteViews build(Context c, int widgetId, Kind kind) {
         boolean stock = kind == Kind.STOCK;
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_list);
         v.setTextViewText(R.id.widget_title, stock ? "Stock" : "Orders");
-        v.removeAllViews(R.id.widget_rows);
-        v.setOnClickPendingIntent(R.id.widget_root, openApp(c, stock ? "/stock/?tab=products" : "/orders/", stock ? 1 : 2));
+        PendingIntent open = openApp(c, stock ? "/stock/?tab=products" : "/orders/", stock ? 1 : 2, false);
+        v.setOnClickPendingIntent(R.id.widget_header, open);
+        v.setOnClickPendingIntent(R.id.widget_message, open);
         v.setOnClickPendingIntent(R.id.widget_refresh, refreshIntent(c, stock ? StockWidget.class : OrdersWidget.class, stock ? 3 : 4));
+
+        // The list: one adapter per widget (the data URI keeps the intents apart).
+        Intent adapter = new Intent(c, WidgetListService.class)
+                .putExtra(WidgetListService.EXTRA_KIND, kind.name())
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId);
+        adapter.setData(Uri.parse(adapter.toUri(Intent.URI_INTENT_SCHEME)));
+        v.setRemoteAdapter(R.id.widget_list, adapter);
+        v.setEmptyView(R.id.widget_list, R.id.widget_message);
+        // Tapping a row opens the same page (rows fill in this template).
+        v.setPendingIntentTemplate(R.id.widget_list, openApp(c, stock ? "/stock/?tab=products" : "/orders/", stock ? 5 : 6, true));
 
         SharedPreferences p = prefs(c);
         if (p.getString("token", null) == null) {
             v.setTextViewText(R.id.widget_summary, "");
-            message(v, "Open the app and log in to see " + (stock ? "stock." : "orders."));
+            v.setTextViewText(R.id.widget_message, "Open the app and log in to see " + (stock ? "stock." : "orders."));
             v.setTextViewText(R.id.widget_updated, "");
             return v;
         }
         String status = p.getString("status", OK);
         String raw = p.getString("data", null);
-        long at = p.getLong("at", 0);
-        v.setTextViewText(R.id.widget_updated, footer(c, status, at));
+        v.setTextViewText(R.id.widget_updated, footer(c, status, p.getLong("at", 0)));
+        v.setTextViewText(R.id.widget_summary, "");
         if (raw == null) {
-            v.setTextViewText(R.id.widget_summary, "");
-            message(v, LOADING.equals(status) ? "Loading…" : "Couldn't load. Tap ↻ to try again.");
+            v.setTextViewText(R.id.widget_message, LOADING.equals(status) ? "Loading…" : "Couldn't load. Tap ↻ to try again.");
             return v;
         }
         try {
             JSONObject data = new JSONObject(raw);
-            if (stock) fillStock(c, v, data.getJSONObject("stock"), maxRows);
-            else fillOrders(c, v, data.getJSONObject("orders"), maxRows);
+            if (stock) {
+                JSONObject s = data.getJSONObject("stock");
+                int products = s.getInt("products");
+                int out = s.getInt("outOfStock");
+                v.setTextViewText(R.id.widget_summary,
+                        products + " product" + (products == 1 ? "" : "s") + (out > 0 ? " · " + out + " out of stock" : ""));
+                v.setTextViewText(R.id.widget_message, "No products yet.");
+            } else {
+                JSONObject o = data.getJSONObject("orders");
+                int open2 = o.getInt("open");
+                int late = o.getInt("late");
+                v.setTextViewText(R.id.widget_summary, open2 + " open" + (late > 0 ? " · " + late + " late" : ""));
+                v.setTextViewText(R.id.widget_message, "No open orders.");
+            }
         } catch (Exception e) {
-            message(v, "Couldn't read the data. Tap ↻ to try again.");
+            v.setTextViewText(R.id.widget_message, "Couldn't read the data. Tap ↻ to try again.");
         }
         return v;
     }
 
-    private static void fillStock(Context c, RemoteViews v, JSONObject s, int maxRows) throws Exception {
-        int products = s.getInt("products");
-        int out = s.getInt("outOfStock");
-        v.setTextViewText(R.id.widget_summary,
-                products + " product" + (products == 1 ? "" : "s") + (out > 0 ? " · " + out + " out of stock" : ""));
-        JSONArray items = s.getJSONArray("items");
-        if (items.length() == 0) { message(v, "No products yet."); return; }
-        v.setViewVisibility(R.id.widget_message, View.GONE);
-        for (int i = 0; i < Math.min(items.length(), maxRows); i++) {
-            JSONObject it = items.getJSONObject(i);
-            RemoteViews row = new RemoteViews(c.getPackageName(), R.layout.widget_row);
-            row.setTextViewText(R.id.row_title, it.getString("name"));
-            row.setViewVisibility(R.id.row_sub, View.GONE);
-            row.setTextViewText(R.id.row_value, it.getString("qty"));
-            if (it.getBoolean("out")) row.setTextColor(R.id.row_value, RED);
-            v.addView(R.id.widget_rows, row);
+    /** Rows for a widget's list (called by WidgetListService on a background thread). */
+    static List<RemoteViews> rows(Context c, Kind kind) {
+        List<RemoteViews> rows = new ArrayList<>();
+        SharedPreferences p = prefs(c);
+        String raw = p.getString("data", null);
+        if (p.getString("token", null) == null || raw == null) return rows;
+        try {
+            JSONObject data = new JSONObject(raw);
+            JSONArray items = kind == Kind.STOCK
+                    ? data.getJSONObject("stock").getJSONArray("items")
+                    : data.getJSONObject("orders").getJSONArray("items");
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject it = items.getJSONObject(i);
+                RemoteViews row = new RemoteViews(c.getPackageName(), R.layout.widget_row);
+                if (kind == Kind.STOCK) {
+                    row.setTextViewText(R.id.row_title, it.getString("name"));
+                    row.setViewVisibility(R.id.row_sub, View.GONE);
+                    row.setTextViewText(R.id.row_value, it.getString("qty"));
+                    if (it.getBoolean("out")) row.setTextColor(R.id.row_value, RED);
+                } else {
+                    row.setTextViewText(R.id.row_title, it.getString("product"));
+                    String due = it.isNull("due") ? null : it.getString("due");
+                    row.setTextViewText(R.id.row_sub, it.getString("buyer") + (due == null ? "" : " · by " + due));
+                    row.setTextViewText(R.id.row_value, it.getString("qty"));
+                    if (it.getBoolean("late")) row.setTextColor(R.id.row_value, RED);
+                    else if (it.getBoolean("dueToday")) row.setTextColor(R.id.row_value, AMBER);
+                }
+                row.setOnClickFillInIntent(R.id.row_root, new Intent());
+                rows.add(row);
+            }
+        } catch (Exception ignored) {
+            // Bad data: show the list empty (the header says so).
         }
-    }
-
-    private static void fillOrders(Context c, RemoteViews v, JSONObject o, int maxRows) throws Exception {
-        int open = o.getInt("open");
-        int late = o.getInt("late");
-        v.setTextViewText(R.id.widget_summary, open + " open" + (late > 0 ? " · " + late + " late" : ""));
-        JSONArray items = o.getJSONArray("items");
-        if (items.length() == 0) { message(v, "No open orders."); return; }
-        v.setViewVisibility(R.id.widget_message, View.GONE);
-        for (int i = 0; i < Math.min(items.length(), maxRows); i++) {
-            JSONObject it = items.getJSONObject(i);
-            RemoteViews row = new RemoteViews(c.getPackageName(), R.layout.widget_row);
-            row.setTextViewText(R.id.row_title, it.getString("product"));
-            String due = it.isNull("due") ? null : it.getString("due");
-            row.setTextViewText(R.id.row_sub, it.getString("buyer") + (due == null ? "" : " · by " + due));
-            row.setTextViewText(R.id.row_value, it.getString("qty"));
-            if (it.getBoolean("late")) row.setTextColor(R.id.row_value, RED);
-            else if (it.getBoolean("dueToday")) row.setTextColor(R.id.row_value, AMBER);
-            v.addView(R.id.widget_rows, row);
-        }
-    }
-
-    private static void message(RemoteViews v, String text) {
-        v.setTextViewText(R.id.widget_message, text);
-        v.setViewVisibility(R.id.widget_message, View.VISIBLE);
+        return rows;
     }
 
     private static String footer(Context c, String status, long at) {
@@ -246,13 +256,16 @@ public final class WidgetStore {
         return ERROR.equals(status) ? "Couldn't update · from " + when : "Updated " + when;
     }
 
-    /** Opens the app on `path` (the app handles it through @capacitor/app's appUrlOpen). */
-    private static PendingIntent openApp(Context c, String path, int requestCode) {
+    /**
+     * Opens the app on `path` (the app handles it through @capacitor/app's appUrlOpen).
+     * A list's click template must be mutable so each row can fill it in; the intent is explicit.
+     */
+    private static PendingIntent openApp(Context c, String path, int requestCode, boolean template) {
         String scheme = c.getString(R.string.custom_url_scheme);
         Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(scheme + "://app" + path), c, MainActivity.class);
         i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        return PendingIntent.getActivity(c, requestCode, i,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        int mutability = template ? PendingIntent.FLAG_MUTABLE : PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getActivity(c, requestCode, i, PendingIntent.FLAG_UPDATE_CURRENT | mutability);
     }
 
     private static PendingIntent refreshIntent(Context c, Class<?> provider, int requestCode) {
