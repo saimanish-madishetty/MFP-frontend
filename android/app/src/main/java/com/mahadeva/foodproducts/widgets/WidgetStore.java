@@ -289,15 +289,20 @@ public final class WidgetStore {
             for (int i = 0; i < items.length(); i++) {
                 JSONObject it = items.getJSONObject(i);
                 RemoteViews row = new RemoteViews(c.getPackageName(), R.layout.widget_row);
+                // A size of a product with sizes: the product's name, and the size on the line below
+                // (a long full name would be cut off right where the size is). Older data has no title.
+                String size = it.optString("size", "");
                 if (kind == Kind.STOCK) {
-                    row.setTextViewText(R.id.row_title, it.getString("name"));
-                    row.setViewVisibility(R.id.row_sub, View.GONE);
+                    row.setTextViewText(R.id.row_title, it.optString("title", it.getString("name")));
+                    if (size.isEmpty()) row.setViewVisibility(R.id.row_sub, View.GONE);
+                    else row.setTextViewText(R.id.row_sub, size);
                     row.setTextViewText(R.id.row_value, it.getString("qty"));
                     if (it.getBoolean("out")) row.setTextColor(R.id.row_value, RED);
                 } else {
-                    row.setTextViewText(R.id.row_title, it.getString("product"));
+                    row.setTextViewText(R.id.row_title, it.optString("productTitle", it.getString("product")));
                     String due = it.isNull("due") ? null : it.getString("due");
-                    row.setTextViewText(R.id.row_sub, it.getString("buyer") + (due == null ? "" : " · by " + due));
+                    row.setTextViewText(R.id.row_sub, (size.isEmpty() ? "" : size + " · ")
+                            + it.getString("buyer") + (due == null ? "" : " · by " + due));
                     row.setTextViewText(R.id.row_value, it.getString("qty"));
                     if (it.getBoolean("late")) row.setTextColor(R.id.row_value, RED);
                     else if (it.getBoolean("dueToday")) row.setTextColor(R.id.row_value, AMBER);
