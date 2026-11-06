@@ -6,7 +6,14 @@ import { Suspense, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import { formatDay, formatINR, todayIST } from "@/lib/format";
-import { PRODUCT_MOVEMENT_LABEL, formatStock, perUnit, sizeLabel, unitFactor, type ProductDetail } from "@/lib/products";
+import {
+  PRODUCT_MOVEMENT_LABEL,
+  formatStock,
+  perUnit,
+  sizeLabel,
+  unitFactor,
+  type ProductDetail,
+} from "@/lib/products";
 import { DeleteForever } from "@/components/DeleteForever";
 import { formatQty, unitShort, type ProductWastage, type WastageLine } from "@/lib/stock";
 import {
@@ -41,7 +48,7 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
   // Everything is sent in stock units (pieces, kg) so a mix adds up exactly.
   const entered =
     Math.round(
-      ((Number(value) || 0) * unitFactor(product, product.saleUnit) + (twoUnits ? Number(extra) || 0 : 0)) * 1000,
+      ((Number(value) || 0) * unitFactor(product, product.saleUnit) + (twoUnits ? Number(extra) || 0 : 0)) * 1000
     ) / 1000;
   const current = Number(product.currentQty);
   const after = mode === "count" ? entered : current + (direction === "add" ? entered : -entered);
@@ -56,9 +63,7 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
         date,
         reason: reason.trim(),
         unit: twoUnits ? stockUnit : product.saleUnit,
-        ...(mode === "count"
-          ? { countedQty: entered }
-          : { quantity: (direction === "add" ? 1 : -1) * entered }),
+        ...(mode === "count" ? { countedQty: entered } : { quantity: (direction === "add" ? 1 : -1) * entered }),
       });
       await mutate((k) => typeof k === "string" && k.startsWith("/products"));
       onClose();
@@ -94,9 +99,7 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
           />
         )}
         <div className="grid grid-cols-2 gap-3">
-          <Field
-            label={`${mode === "count" ? "Actual count" : "Quantity"} (${unitShort(product.saleUnit)})`}
-          >
+          <Field label={unitShort(product.saleUnit).replace(/^./, (c) => c.toUpperCase())}>
             <Input
               type="number"
               inputMode="decimal"
@@ -110,7 +113,7 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
             />
           </Field>
           {twoUnits && (
-            <Field label={`+ ${unitShort(stockUnit)}`}>
+            <Field label={`+ ${unitShort(stockUnit).replace(/^./, (c) => c.toUpperCase())}`}>
               <Input
                 type="number"
                 inputMode="decimal"
@@ -242,8 +245,7 @@ function ProductDetailView() {
           <span className="flex flex-wrap items-center gap-2">
             {p.group && (
               <>
-                Size{" "}
-                <strong className="text-foreground">{sizeLabel(p)}</strong> of{" "}
+                Size <strong className="text-foreground">{sizeLabel(p)}</strong> of{" "}
                 <Link href={`/products/group/?id=${p.group.id}`} className="text-brand">
                   {p.group.name}
                 </Link>
@@ -282,7 +284,11 @@ function ProductDetailView() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Card className="p-4">
           <p className="text-sm text-muted">Ready stock</p>
-          <p className={`text-3xl font-semibold tabular-nums ${Number(p.currentQty) <= 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+          <p
+            className={`text-3xl font-semibold tabular-nums ${
+              Number(p.currentQty) <= 0 ? "text-red-600 dark:text-red-400" : ""
+            }`}
+          >
             {formatStock(p, p.currentQty)}
           </p>
           <p className="text-xs text-muted">{p.pack.description}</p>
@@ -304,10 +310,7 @@ function ProductDetailView() {
           <Row muted label="HSN" value={p.hsnCode ?? "—"} />
           <Row muted label="Packing" value={p.pack.description} />
           <div className="mt-2 border-t border-border pt-2">
-            <Row
-              label="Material cost (est.)"
-              value={p.cost.costPerUnit ? formatINR(p.cost.costPerUnit) : "—"}
-            />
+            <Row label="Material cost (est.)" value={p.cost.costPerUnit ? formatINR(p.cost.costPerUnit) : "—"} />
             {p.cost.margin && <Row label="Margin (est.)" value={formatINR(p.cost.margin)} strong />}
             {p.cost.incomplete && <p className="text-xs text-muted">Some quantities or material prices are missing.</p>}
           </div>

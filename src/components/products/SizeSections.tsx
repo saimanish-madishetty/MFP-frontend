@@ -223,7 +223,7 @@ export function SizeSections({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Field
-              label={`Selling price ${perUnit(d.saleUnit)} (₹)`}
+              label={`₹ ${perUnit(d.saleUnit)}`}
               hint={
                 twoUnits && d.price === "" && pricePerSaleUnit !== null
                   ? `Blank = ${formatINR(pricePerSaleUnit)} (from ${perUnit(pack.stockUnit)} price)`
@@ -245,7 +245,7 @@ export function SizeSections({
             </Field>
             {twoUnits && (
               <Field
-                label={`Selling price ${perUnit(pack.stockUnit)} (₹)`}
+                label={`₹ ${perUnit(pack.stockUnit)}`}
                 hint={
                   d.piecePrice === "" && derivedPiecePrice !== null
                     ? `Blank = ${formatINR(derivedPiecePrice)} (from ${perUnit(d.saleUnit)} price)`

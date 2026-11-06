@@ -7,7 +7,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import type { Buyer } from "@/lib/buyers";
 import { formatINR, todayIST } from "@/lib/format";
-import { formatStock, perUnit, priceFor, sizeLabel, unitFactor, type Product } from "@/lib/products";
+import { formatStock, perUnit, priceFor, sizeLabel, unitFactor, unitSingular, type Product } from "@/lib/products";
 import { previewInvoice, type CompanyProfile, type SaleDetail } from "@/lib/sales";
 import { unitShort, type Unit } from "@/lib/stock";
 import { PAYMENT_MODES, type PaymentMode } from "@/lib/workers";
@@ -37,7 +37,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
       quantity: String(Number(l.quantity)),
       rate: String(Number(l.rate)),
       discount: Number(l.discount) > 0 ? String(Number(l.discount)) : "",
-    })),
+    }))
   );
   // Amount received with the sale: blank = nothing yet, less than the total = part payment.
   const [paidAmount, setPaidAmount] = useState("");
@@ -53,21 +53,34 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
 
   const newLine = (p: Product, unit: Unit): LineState => {
     const rate = priceFor(p, unit);
-    return { key: nextKey++, productId: p.id, unit, quantity: "", rate: rate === null ? "" : String(rate), discount: "" };
+    return {
+      key: nextKey++,
+      productId: p.id,
+      unit,
+      quantity: "",
+      rate: rate === null ? "" : String(rate),
+      discount: "",
+    };
   };
 
-  // An item is a pack line, optionally with a pieces part right below it. A saved pieces-only
-  // line gets an empty pack line above it so it shows the same way.
+  /** The product's other unit (pieces for a pack, kg for a bag), if it's sold in two. */
+  const otherUnit = (p: Product, unit: Unit) => p.pack.units.find((u) => u.unit !== unit)?.unit;
+
+  // An item of a product sold in two units is a pack line with its pieces line right below it,
+  // both always shown (either may stay blank). Saved invoices get the missing half added back.
   if (!arranged) {
     setArranged(true);
     setLines((prev) =>
       prev.flatMap((l, i) => {
         const p = productById.get(l.productId);
+        const other = p && otherUnit(p, p.saleUnit);
+        if (!p || !other) return [l];
         const before = prev[i - 1];
-        const orphan =
-          p && l.unit !== p.saleUnit && !(before?.productId === l.productId && before.unit === p.saleUnit);
-        return orphan ? [newLine(p, p.saleUnit), l] : [l];
-      }),
+        const after = prev[i + 1];
+        if (l.unit !== p.saleUnit)
+          return before?.productId === l.productId && before.unit === p.saleUnit ? [l] : [newLine(p, p.saleUnit), l];
+        return after?.productId === l.productId && after.unit !== p.saleUnit ? [l] : [l, newLine(p, other)];
+      })
     );
   }
   // Archived products already on this invoice still need a name.
@@ -80,48 +93,42 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
     return (Number(l.quantity) || 0) * (p ? unitFactor(p, l.unit) : 1);
   };
 
+  /** A line directly after one for the same product in another unit is the pieces half of that item. */
+  const isMixPart = (i: number) =>
+    i > 0 && i < lines.length && lines[i - 1].productId === lines[i].productId && lines[i - 1].unit !== lines[i].unit;
+  const filled = (l?: LineState) => Number(l?.quantity) > 0;
+  // An item has one discount, kept on its pack line; when only pieces are sold it applies to those.
+  const priced = lines.map((l, i) => {
+    if (isMixPart(i) && !filled(lines[i - 1])) return { ...l, discount: lines[i - 1].discount };
+    if (isMixPart(i + 1) && !filled(l)) return { ...l, discount: "" };
+    return l;
+  });
+
   const buyer = buyers.find((b) => b.id === buyerId) ?? (sale && sale.buyerId === buyerId ? sale.buyer : undefined);
   const taxed = company.gstin !== null;
   const sameState =
     !buyer?.state || !company.state || buyer.state.trim().toLowerCase() === company.state.trim().toLowerCase();
   const preview = previewInvoice(
-    lines.map((l) => ({
+    priced.map((l) => ({
       quantity: Number(l.quantity) || 0,
       rate: Number(l.rate) || 0,
       discount: Number(l.discount) || 0,
-      gstRate: Number(lineProduct(l.productId)?.gstRate ?? sale?.lines.find((x) => x.productId === l.productId)?.gstRate ?? 0),
+      gstRate: Number(
+        lineProduct(l.productId)?.gstRate ?? sale?.lines.find((x) => x.productId === l.productId)?.gstRate ?? 0
+      ),
     })),
-    { taxed, pricesIncludeGst: company.pricesIncludeGst, interState: taxed && !sameState },
+    { taxed, pricesIncludeGst: company.pricesIncludeGst, interState: taxed && !sameState }
   );
   const paid = paidAmount === "" ? 0 : Number(paidAmount);
   const balance = Math.round((preview.grandTotal - paid) * 100) / 100;
 
-  // Starts in packs (bags); "+ Add pcs" adds pieces (kg) below, and packs can be left blank.
+  // Products sold in two units get both boxes (packs + pieces); either can be left blank.
   const addLine = (productId: number) => {
     const p = productById.get(productId);
-    if (p) setLines((prev) => [...prev, newLine(p, p.saleUnit)]);
+    if (!p) return;
+    const other = otherUnit(p, p.saleUnit);
+    setLines((prev) => [...prev, newLine(p, p.saleUnit), ...(other ? [newLine(p, other)] : [])]);
   };
-
-  /** For a mix (20 packs + 5 pieces): a line in the product's other unit, right below `l`. */
-  const addOtherUnit = (l: LineState) => {
-    const p = lineProduct(l.productId);
-    const other = p?.pack.units.find((u) => u.unit !== l.unit)?.unit;
-    if (!p || !other) return;
-    setLines((prev) => {
-      const i = prev.findIndex((x) => x.key === l.key);
-      return [...prev.slice(0, i + 1), newLine(p, other), ...prev.slice(i + 1)];
-    });
-  };
-  /** A line directly after one for the same product in another unit is shown as part of it. */
-  const isMixPart = (i: number) =>
-    i > 0 &&
-    i < lines.length &&
-    lines[i - 1].productId === lines[i].productId &&
-    lines[i - 1].unit !== lines[i].unit;
-
-  /** The other half of a pack + pieces item, if there is one. */
-  const partner = (i: number) => (isMixPart(i) ? lines[i - 1] : isMixPart(i + 1) ? lines[i + 1] : undefined);
-  const filled = (l?: LineState) => Number(l?.quantity) > 0;
   const items = lines.filter((_, i) => !isMixPart(i)).length;
   const update = (key: number, patch: Partial<LineState>) =>
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -135,7 +142,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
       date,
       notes: notes.trim() || undefined,
       // A blank packs (or pieces) half of an item isn't sent.
-      lines: lines.filter(filled).map((l) => ({
+      lines: priced.filter(filled).map((l) => ({
         productId: l.productId,
         unit: l.unit,
         quantity: Number(l.quantity),
@@ -149,8 +156,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
         ? await api<SaleDetail>(`/sales/${sale.id}`, "PUT", body)
         : await api<SaleDetail>("/sales", "POST", body);
       await mutate(
-        (k) =>
-          typeof k === "string" && (k.startsWith("/sales") || k.startsWith("/buyers") || k.startsWith("/products")),
+        (k) => typeof k === "string" && (k.startsWith("/sales") || k.startsWith("/buyers") || k.startsWith("/products"))
       );
       // Edit returns to the details page it came from; a new record replaces the "new" page.
       if (sale) router.back();
@@ -167,7 +173,12 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
     <form onSubmit={submit} className="space-y-4 pb-28">
       <Card className="space-y-4 p-4">
         <Field label="Buyer">
-          <Select required searchable value={buyerId} onChange={(e) => setBuyerId(e.target.value ? Number(e.target.value) : "")}>
+          <Select
+            required
+            searchable
+            value={buyerId}
+            onChange={(e) => setBuyerId(e.target.value ? Number(e.target.value) : "")}
+          >
             <option value="">Choose buyer…</option>
             {activeBuyers.map((b) => (
               <option key={b.id} value={b.id}>
@@ -198,79 +209,66 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
         <h2 className="font-semibold">Items</h2>
         {lines.length === 0 && <p className="text-sm text-muted">Add the products being sold.</p>}
         {lines.map((l, i) => {
+          if (isMixPart(i)) return null;
           const p = lineProduct(l.productId);
-          const name = p?.internalName ?? sale?.lines.find((x) => x.productId === l.productId)?.product.internalName ?? "?";
+          const name =
+            p?.internalName ?? sale?.lines.find((x) => x.productId === l.productId)?.product.internalName ?? "?";
           // In stock units (pieces, kg, …), summed over every line of this product.
           const available = (p ? Number(p.currentQty) : 0) + (originalQty.get(l.productId) ?? 0);
           const wanted = lines.filter((x) => x.productId === l.productId).reduce((a, x) => a + stockOf(x), 0);
-          const part = isMixPart(i);
-          const hasPart = i + 1 < lines.length && isMixPart(i + 1);
-          const other = p?.pack.units.find((u) => u.unit !== l.unit)?.unit;
-          const mate = partner(i);
-          // ✕ on the item removes it with its pieces part; ✕ on the pieces part removes just that.
-          const gone = new Set([l.key, ...(!part && mate ? [mate.key] : [])]);
-          const remove = (
-            <button
-              type="button"
-              aria-label={part ? `Remove ${unitShort(l.unit)}` : "Remove item"}
-              onClick={() => setLines((prev) => prev.filter((x) => !gone.has(x.key)))}
-              className="rounded p-1 text-muted hover:bg-surface-2"
-            >
-              ✕
-            </button>
+          const mate = isMixPart(i + 1) ? lines[i + 1] : undefined;
+          const total = (preview.lineTotals[i] ?? 0) + (mate ? preview.lineTotals[i + 1] ?? 0 : 0);
+          const qtyBox = (x: LineState, required: boolean) => (
+            <Field label={unitShort(x.unit).replace(/^./, (c) => c.toUpperCase())}>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                required={required}
+                placeholder="0"
+                value={x.quantity}
+                onChange={(e) => update(x.key, { quantity: e.target.value })}
+              />
+            </Field>
+          );
+          const rateBox = (x: LineState) => (
+            <Field label={`₹ / ${unitSingular(x.unit)}`}>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.01"
+                required={filled(x) || !mate}
+                value={x.rate}
+                onChange={(e) => update(x.key, { rate: e.target.value })}
+              />
+            </Field>
           );
           return (
-            <div
-              key={l.key}
-              className={`space-y-2 border border-border p-3 ${
-                part ? "-mt-3 rounded-b-lg border-t-0 pt-0" : hasPart ? "rounded-t-lg border-b-0" : "rounded-lg"
-              }`}
-            >
-              {part ? (
-                <div className="flex items-center justify-between gap-2 border-t border-dashed border-border pt-2">
-                  <p className="text-sm text-muted">+ {unitShort(l.unit)} of {name}</p>
-                  {remove}
+            <div key={l.key} className="space-y-3 rounded-lg border border-border p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium break-words">{p?.group ? p.group.name : name}</p>
+                  {p?.group && <p className="text-sm font-semibold text-brand">{sizeLabel(p)}</p>}
+                  {p && <p className="text-xs text-muted">{p.pack.description}</p>}
                 </div>
-              ) : (
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-medium break-words">{p?.group ? p.group.name : name}</p>
-                    {p?.group && <p className="text-sm font-semibold text-brand">{sizeLabel(p)}</p>}
-                    {p && (
-                      <p className="truncate text-xs text-muted">
-                        Invoice shows: {p.publicName} · {p.pack.description}
-                      </p>
-                    )}
-                  </div>
-                  {remove}
-                </div>
-              )}
-              <div className="grid grid-cols-3 gap-2">
-                <Field label={`Qty (${unitShort(l.unit)})`}>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step="any"
-                    // Packs can stay blank when selling only pieces (and the other way round).
-                    required={!filled(mate)}
-                    placeholder={mate ? "0" : undefined}
-                    value={l.quantity}
-                    onChange={(e) => update(l.key, { quantity: e.target.value })}
-                  />
-                </Field>
-                <Field label={`Rate ₹ ${perUnit(l.unit)}`}>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    step="0.01"
-                    required={filled(l) || !mate}
-                    value={l.rate}
-                    onChange={(e) => update(l.key, { rate: e.target.value })}
-                  />
-                </Field>
-                <Field label="Discount (₹)">
+                <button
+                  type="button"
+                  aria-label="Remove item"
+                  onClick={() => setLines((prev) => prev.filter((x) => x.key !== l.key && x.key !== mate?.key))}
+                  className="rounded p-1 text-muted hover:bg-surface-2"
+                >
+                  ✕
+                </button>
+              </div>
+              {/* Packs and pieces side by side, their rates below, like the production screen. */}
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                {qtyBox(l, !filled(mate))}
+                {mate ? qtyBox(mate, false) : rateBox(l)}
+                {mate && rateBox(l)}
+                {mate && rateBox(mate)}
+                <Field label="Discount ₹">
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -284,18 +282,12 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
               </div>
               <div className="flex items-center justify-between gap-2 text-xs">
                 <span className={wanted > available ? "text-amber-600 dark:text-amber-400" : "text-muted"}>
-                  {!p || hasPart
-                    ? ""
-                    : wanted > available
+                  {p &&
+                    (wanted > available
                       ? `Only ${formatStock(p, available)} ready. You can still save.`
-                      : `${formatStock(p, available)} ready`}
-                  {p && other && !part && !hasPart && (
-                    <button type="button" onClick={() => addOtherUnit(l)} className="ml-2 font-medium text-brand">
-                      + Add {unitShort(other)}
-                    </button>
-                  )}
+                      : `${formatStock(p, available)} ready`)}
                 </span>
-                <span className="font-medium tabular-nums">{formatINR(preview.lineTotals[i] ?? 0)}</span>
+                <span className="text-sm font-semibold tabular-nums">{formatINR(total)}</span>
               </div>
             </div>
           );
@@ -341,7 +333,7 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
       {!sale && lines.length > 0 && (
         <Card className="space-y-3 p-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Amount received now (₹)" hint="Leave blank if not paid yet">
+            <Field label="Received now ₹" hint="Blank if not paid yet">
               <Input
                 type="number"
                 inputMode="decimal"
@@ -373,17 +365,17 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
                 balance < 0
                   ? "text-red-600 dark:text-red-400"
                   : paid > 0 && balance === 0
-                    ? "text-green-700 dark:text-green-400"
-                    : "text-muted"
+                  ? "text-green-700 dark:text-green-400"
+                  : "text-muted"
               }
             >
               {balance < 0
                 ? `More than the invoice total (${formatINR(preview.grandTotal)})`
                 : paid <= 0
-                  ? `Not paid: ${formatINR(preview.grandTotal)} due`
-                  : balance === 0
-                    ? "Fully paid"
-                    : `Part payment: ${formatINR(balance)} still due`}
+                ? `Not paid: ${formatINR(preview.grandTotal)} due`
+                : balance === 0
+                ? "Fully paid"
+                : `Part payment: ${formatINR(balance)} still due`}
             </p>
             <div className="flex gap-2">
               {paid !== preview.grandTotal && (
