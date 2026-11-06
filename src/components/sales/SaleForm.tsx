@@ -7,7 +7,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import type { Buyer } from "@/lib/buyers";
 import { formatINR, todayIST } from "@/lib/format";
-import { formatStock, perUnit, priceFor, unitFactor, type Product } from "@/lib/products";
+import { formatStock, perUnit, priceFor, sizeLabel, unitFactor, type Product } from "@/lib/products";
 import { previewInvoice, type CompanyProfile, type SaleDetail } from "@/lib/sales";
 import { unitShort, type Unit } from "@/lib/stock";
 import { PAYMENT_MODES, type PaymentMode } from "@/lib/workers";
@@ -234,7 +234,8 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
               ) : (
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{name}</p>
+                    <p className="font-medium break-words">{p?.group ? p.group.name : name}</p>
+                    {p?.group && <p className="text-sm font-semibold text-brand">{sizeLabel(p)}</p>}
                     {p && (
                       <p className="truncate text-xs text-muted">
                         Invoice shows: {p.publicName} · {p.pack.description}

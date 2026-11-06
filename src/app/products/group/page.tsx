@@ -54,13 +54,13 @@ function GroupView() {
             <li key={p.id}>
               <Link
                 href={`/products/detail/?id=${p.id}`}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2"
+                className="flex items-start gap-3 px-4 py-3 hover:bg-surface-2"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium">
                     {sizeLabel(p)} {p.code && <Badge>{p.code}</Badge>} {!p.active && <Badge>Archived</Badge>}
                   </span>
-                  <span className="block truncate text-xs text-muted">
+                  <span className="block text-xs text-muted">
                     {p.pack.description} ·{" "}
                     {p.pack.units
                       .filter((u) => u.priceSet)
@@ -69,7 +69,7 @@ function GroupView() {
                   </span>
                 </span>
                 <span
-                  className={`font-semibold tabular-nums ${
+                  className={`shrink-0 text-right font-semibold whitespace-nowrap tabular-nums ${
                     Number(p.currentQty) <= 0 ? "text-red-600 dark:text-red-400" : ""
                   }`}
                 >

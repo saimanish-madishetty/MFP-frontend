@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
-import { formatStock, unitFactor, type Product } from "@/lib/products";
+import { formatStock, sizeLabel, unitFactor, type Product } from "@/lib/products";
 import { formatQty, unitShort, type MaterialListItem, type ProductionDay, type Unit } from "@/lib/stock";
 import { Button, ButtonLink, DateStepper, Empty, ErrorBox, Input, Loading, Select, Textarea } from "@/components/ui";
 import { ProductPicker } from "@/components/products/ProductPicker";
@@ -213,7 +213,8 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
           <div key={row.productId} className="space-y-2 rounded-xl border border-border bg-surface p-3">
             <div className="flex items-start gap-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{p.internalName}</p>
+                <p className="font-medium break-words">{p.group ? p.group.name : p.internalName}</p>
+                {p.group && <p className="text-sm font-semibold text-brand">{sizeLabel(p)}</p>}
                 <p className="text-xs text-muted">
                   {p.pack.description} · ready now: {formatStock(p, ready)}
                 </p>
