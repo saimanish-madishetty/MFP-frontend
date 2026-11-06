@@ -315,19 +315,6 @@ function ProductDetailView() {
 
       <WastageCard product={p} />
 
-      {p.specs && p.specs.length > 0 && (
-        <Card className="p-4">
-          <h2 className="mb-2 font-semibold">
-            Internal specs <span className="text-xs font-normal text-muted">(not on invoices)</span>
-          </h2>
-          <div className="text-sm">
-            {p.specs.map((s) => (
-              <Row key={s.key} label={s.key} value={s.value} />
-            ))}
-          </div>
-        </Card>
-      )}
-
       <Card className="p-4">
         <h2 className="mb-2 font-semibold">Stock history</h2>
         {p.movements.length === 0 ? (

@@ -2,17 +2,18 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import useSWR from "swr";
 import { formatINR } from "@/lib/format";
 import { compareSizes, formatStock, perUnit, sizeLabel, type Product, type ProductGroup } from "@/lib/products";
-import { Badge, ButtonLink, Card, ErrorBox, Loading, PageHeader } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, ErrorBox, Loading, PageHeader, Sheet } from "@/components/ui";
 
 /** A product with sizes: what they share, and every size with its packing, price and stock. */
 function GroupView() {
   const id = useSearchParams().get("id");
   const { data: group, error } = useSWR<ProductGroup>(id ? `/product-groups/${id}` : null);
   const { data: products } = useSWR<Product[]>("/products?includeInactive=true");
+  const [choosing, setChoosing] = useState(false);
 
   if (error) return <ErrorBox error={error} />;
   if (!group || !products) return <Loading />;
@@ -37,9 +38,9 @@ function GroupView() {
             {template && (
               <ButtonLink href={`/products/new/?group=${group.id}&from=${template.id}`}>+ Add size</ButtonLink>
             )}
-            <ButtonLink href={`/products/group/edit/?id=${group.id}`} variant="secondary">
+            <Button variant="secondary" onClick={() => setChoosing(true)}>
               Edit
-            </ButtonLink>
+            </Button>
           </>
         }
       />
@@ -51,7 +52,10 @@ function GroupView() {
         <ul className="divide-y divide-border">
           {sizes.map((p) => (
             <li key={p.id}>
-              <Link href={`/products/detail/?id=${p.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2">
+              <Link
+                href={`/products/detail/?id=${p.id}`}
+                className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2"
+              >
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium">
                     {sizeLabel(p)} {p.code && <Badge>{p.code}</Badge>} {!p.active && <Badge>Archived</Badge>}
@@ -65,7 +69,9 @@ function GroupView() {
                   </span>
                 </span>
                 <span
-                  className={`font-semibold tabular-nums ${Number(p.currentQty) <= 0 ? "text-red-600 dark:text-red-400" : ""}`}
+                  className={`font-semibold tabular-nums ${
+                    Number(p.currentQty) <= 0 ? "text-red-600 dark:text-red-400" : ""
+                  }`}
                 >
                   {formatStock(p, p.currentQty)}
                 </span>
@@ -74,9 +80,41 @@ function GroupView() {
           ))}
         </ul>
       </Card>
+      <Sheet open={choosing} title="What do you want to edit?" onClose={() => setChoosing(false)}>
+        <div className="space-y-3">
+          <ul className="divide-y divide-border rounded-xl border border-border">
+            {sizes.map((p) => (
+              <li key={p.id}>
+                <Link
+                  href={`/products/edit/?id=${p.id}`}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium">{sizeLabel(p)}</span>
+                    <span className="block truncate text-xs text-muted">
+                      Packing, price, materials · {p.pack.description}
+                    </span>
+                  </span>
+                  <span className="text-muted">›</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <Link
+            href={`/products/group/edit/?id=${group.id}`}
+            className="flex items-center gap-3 rounded-xl border border-border px-4 py-3 hover:bg-surface-2"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">Product details</span>
+              <span className="block text-xs text-muted">Name, invoice name, HSN, GST and what varies</span>
+            </span>
+            <span className="text-muted">›</span>
+          </Link>
+        </div>
+      </Sheet>
       <p className="text-xs text-muted">
-        Each size has its own packing, price, recipe and stock. Name, invoice name, HSN and GST are shared: change them with
-        Edit.
+        Each size has its own packing, price, recipe and stock. Name, invoice name, HSN and GST are shared: change them
+        with Edit.
       </p>
     </div>
   );
