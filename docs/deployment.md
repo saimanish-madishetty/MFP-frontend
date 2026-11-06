@@ -194,3 +194,40 @@ The working folders don't switch branch, so git-ignored local files (`changes.md
 
 **Rolling back:** Render → service → Events → pick the previous deploy → *Rollback*; Vercel → Deployments → previous one → *Promote to Production*.
 A rollback doesn't undo database migrations; restore the backup from step 3 only if a migration itself went wrong.
+
+## Versions A and B: switching
+
+Annotated tags in **both** repos mark each version (they never move; a new trial gets a new tag, e.g. `version-b-2`):
+
+| Tag | Backend | Frontend | What |
+|---|---|---|---|
+| `version-a` | 56995ec | 8f96a17 | Products without sizes. Production on 2026-11-06. |
+| `version-b-1` | 14e1167 | d590ff8 | Products with sizes (branch `feature/variants`). |
+
+Deploy tags `prod-<date>-<time>` (from `deploy-prod.ps1`) mark what was actually shipped and when.
+
+**Locally:** check out the same version in both repos, then regenerate the Prisma client in the backend
+(`main` for A, `feature/variants` for B; `git checkout version-a` also works, as a detached HEAD).
+
+```bash
+git -C ../MFP-backend checkout main && (cd ../MFP-backend && npx prisma generate)   # version A
+git checkout main
+```
+
+Version B's migration (`20261106090000_product_groups`) only adds a table and two columns. Version A runs on a
+database that has it, and A's `prisma migrate deploy` passes there (tested: "No pending migrations"). Products
+grouped in B keep their generated names ("Mahadeva Maida Noodles 1.5mm 500g") under A; A ignores the groups.
+
+**Production back to A after B is live:** no force-push (the deploy script only fast-forwards). In both repos:
+
+```bash
+git checkout main
+git revert --no-commit version-a..HEAD     # main's files become exactly version A
+git commit -m "Back to version A"
+```
+
+then `scripts\deploy-prod.ps1 -Branch main`. Check with `git diff version-a HEAD --stat` (should be empty).
+The B migration stays in the database (harmless); the reverted code no longer uses it.
+
+**Android:** the app contains the frontend, so the phone needs a new APK to switch. Android won't install a lower
+`versionCode`, so a rollback APK is built from the A code with the next `versionCode` (e.g. A again as 1.4).
