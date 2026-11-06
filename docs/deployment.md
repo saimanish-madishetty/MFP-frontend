@@ -201,8 +201,9 @@ Annotated tags in **both** repos mark each version (they never move; a new trial
 
 | Tag | Backend | Frontend | What |
 |---|---|---|---|
-| `version-a` | 56995ec | 8f96a17 | Products without sizes. Production on 2026-11-06. |
+| `version-a` | 56995ec | 8f96a17 | Products without sizes. Production until 2026-11-07 (APK 1.2). |
 | `version-b-1` | 14e1167 | d590ff8 | Products with sizes (branch `feature/variants`). |
+| `version-b-2` | 016e719 | 64b0b3a | Version B as shipped to production on 2026-11-07 (deploy tag `prod-20261107-0515`, APK 1.3). |
 
 Deploy tags `prod-<date>-<time>` (from `deploy-prod.ps1`) mark what was actually shipped and when.
 
