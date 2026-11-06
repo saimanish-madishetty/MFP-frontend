@@ -5,20 +5,51 @@ import { useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import { formatINR, todayIST } from "@/lib/format";
-import {
-  GST_RATES,
-  packFor,
-  perUnit,
-  unitFactor,
-  unitSingular,
-  type Product,
-  type ProductGroup,
-} from "@/lib/products";
+import { GST_RATES, packFor, perUnit, unitFactor, unitSingular, type Product, type ProductGroup } from "@/lib/products";
 import { UNITS, formatQty, unitShort, type MaterialListItem, type Unit } from "@/lib/stock";
 import { Button, Card, ErrorBox, Field, Input, Loading, Segmented, Select } from "@/components/ui";
 
 type RecipeRow = { materialId: number; qty: string; perPiece: boolean };
 type SpecRow = { key: string; value: string };
+/** One size when adding a product in several sizes. `sizeTyped`: piece size typed, not taken from a Weight value. */
+type SizeRow = {
+  key: number;
+  options: string[];
+  packSize: string;
+  sizeTyped: boolean;
+  price: string;
+  openingQty: string;
+};
+
+let nextSizeKey = 1;
+
+const WEIGHT_UNITS: Record<string, { unit: Unit; per: number }> = {
+  g: { unit: "G", per: 1 },
+  gm: { unit: "G", per: 1 },
+  gms: { unit: "G", per: 1 },
+  kg: { unit: "G", per: 1000 },
+  ml: { unit: "ML", per: 1 },
+  l: { unit: "ML", per: 1000 },
+  ltr: { unit: "ML", per: 1000 },
+};
+
+/**
+ * Piece size from a size value like "500g", "1kg" or "500", in `unit` (G, KG, ML or L); null if it
+ * isn't a weight/volume. A bare number counts only for a dimension named like Weight.
+ */
+function sizeFromValue(value: string, dimension: string, unit: Unit): string | null {
+  const m = value.trim().match(/^(\d+(?:\.\d+)?)\s*([a-z]*)$/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const suffix = m[2].toLowerCase();
+  if (!suffix) return /weight|wt|volume|qty|size/i.test(dimension) ? String(n) : null;
+  const from = WEIGHT_UNITS[suffix];
+  if (!from) return null;
+  // To the chosen unit: grams → G (×1) or KG (÷1000), and the same for ml/L.
+  const inBase = n * from.per;
+  const to = unit === "KG" || unit === "L" ? 1000 : 1;
+  return String(Math.round((inBase / to) * 1000) / 1000);
+}
 
 /** Units a product can be sold as (weights and volumes go in the size). */
 const SALE_UNITS = UNITS.filter((u) => !["G", "ML", "METER", "ROLL"].includes(u.value));
@@ -43,11 +74,9 @@ export function ProductForm({
   const { data: materials } = useSWR<MaterialListItem[]>("/materials?includeInactive=true");
   const src = product ?? template;
   // A size of a group: its names, HSN and GST come from the group; it has a value per dimension.
-  const groupId = product ? product.groupId : (newInGroup ?? null);
+  const groupId = product ? product.groupId : newInGroup ?? null;
   const { data: group } = useSWR<ProductGroup>(groupId ? `/product-groups/${groupId}` : null);
-  const [options, setOptions] = useState<string[]>(
-    groupId && src?.groupId === groupId ? src.options : [],
-  );
+  const [options, setOptions] = useState<string[]>(groupId && src?.groupId === groupId ? src.options : []);
 
   const [internalName, setInternalName] = useState(src?.internalName ?? "");
   const [publicName, setPublicName] = useState(src?.publicName ?? "");
@@ -63,20 +92,57 @@ export function ProductForm({
   const [mrp, setMrp] = useState(src?.mrp ?? "");
   const [hsnCode, setHsnCode] = useState(src?.hsnCode ?? "");
   const [gstRate, setGstRate] = useState(
-    src?.gstRate !== null && src?.gstRate !== undefined ? String(Number(src.gstRate)) : "5",
+    src?.gstRate !== null && src?.gstRate !== undefined ? String(Number(src.gstRate)) : "5"
   );
   const [specs, setSpecs] = useState<SpecRow[]>(src?.specs?.length ? src.specs : [{ key: "", value: "" }]);
   const [recipe, setRecipe] = useState<RecipeRow[]>(
-    src?.materials.map((m) => ({ materialId: m.materialId, qty: m.qtyPerUnit ?? "", perPiece: m.perPiece })) ?? [],
+    src?.materials.map((m) => ({
+      materialId: m.materialId,
+      qty: m.qtyPerUnit ?? "",
+      perPiece: m.perPiece,
+    })) ?? []
   );
   const [openingQty, setOpeningQty] = useState("");
   const [openingDate, setOpeningDate] = useState(todayIST());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // A brand-new product can be added in several sizes at once (a product group).
+  const canHaveSizes = !product && !groupId && !template;
+  const [multi, setMulti] = useState(false);
+  const [dims, setDims] = useState<string[]>(["Thickness", "Weight"]);
+  const emptySize = (from?: SizeRow): SizeRow => ({
+    key: nextSizeKey++,
+    options: from ? [...from.options] : dims.map(() => ""),
+    packSize: from?.packSize ?? "",
+    sizeTyped: from?.sizeTyped ?? false,
+    price: from?.price ?? "",
+    openingQty: "",
+  });
+  const [sizes, setSizes] = useState<SizeRow[]>(() => [emptySize(), emptySize()]);
+  const sizesMode = canHaveSizes && multi;
+
+  const setSize = (key: number, patch: Partial<SizeRow>) =>
+    setSizes((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
+  /** Typing a size value; a Weight like "500g" also fills the piece size (unless it was typed). */
+  const setSizeValue = (row: SizeRow, i: number, value: string) => {
+    const opts = dims.map((_, j) => (j === i ? value : row.options[j] ?? ""));
+    const fromValue = row.sizeTyped
+      ? null
+      : opts.map((v, j) => sizeFromValue(v, dims[j], packUnit)).find((v) => v !== null) ?? null;
+    setSize(row.key, {
+      options: opts,
+      ...(!row.sizeTyped && { packSize: fromValue ?? "" }),
+    });
+  };
 
   const piecesPerUnit = hasPieces && saleUnit !== "PCS" && Number(pieces) > 1 ? Math.round(Number(pieces)) : null;
   const size = packSize === "" ? null : Number(packSize);
-  const pack = packFor({ saleUnit, piecesPerUnit, packSize: size, packUnit: size ? packUnit : null });
+  const pack = packFor({
+    saleUnit,
+    piecesPerUnit,
+    packSize: size,
+    packUnit: size ? packUnit : null,
+  });
   const packed = { saleUnit, pack };
   const twoUnits = pack.units.length > 1;
   const per = unitFactor(packed, saleUnit); // e.g. 10 pieces per pack, 25 kg per bag
@@ -97,16 +163,62 @@ export function ProductForm({
       const qty = Number(r.qty) * (r.perPiece && piecesPerUnit ? piecesPerUnit : 1);
       return { ...acc, total: acc.total + qty * Number(m.lastCostPerUnit) };
     },
-    { total: 0, missing: false },
+    { total: 0, missing: false }
   );
+
+  const recipeBody = () =>
+    recipe.map((r) => ({
+      materialId: r.materialId,
+      qtyPerUnit: r.qty === "" ? null : Number(r.qty),
+      perPiece: piecesPerUnit !== null && r.perPiece,
+    }));
+
+  /** Several sizes: one product group with a product per size, saved together. */
+  const submitSizes = async () => {
+    const body = {
+      name: internalName.trim(),
+      publicName: publicName.trim(),
+      hsnCode: hsnCode.trim() || null,
+      gstRate: Number(gstRate),
+      dimensions: dims.map((d) => d.trim()),
+      members: [],
+      sizes: sizes.map((s) => ({
+        options: s.options.map((o) => o.trim()),
+        saleUnit,
+        piecesPerUnit,
+        packSize: s.packSize === "" ? null : Number(s.packSize),
+        packUnit: s.packSize === "" ? null : packUnit,
+        price: s.price === "" ? null : Number(s.price),
+        specs: specs.filter((x) => x.key.trim()),
+        materials: recipeBody(),
+        openingQty: s.openingQty === "" ? undefined : Number(s.openingQty),
+        openingDate,
+      })),
+    };
+    const saved = await api<ProductGroup>("/product-groups", "POST", body);
+    await mutate((k) => typeof k === "string" && (k.startsWith("/products") || k.startsWith("/product-groups")));
+    router.replace(`/products/group/?id=${saved.id}`);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setError(null);
+    if (sizesMode) {
+      try {
+        await submitSizes();
+      } catch (err) {
+        setError(err);
+        setSaving(false);
+      }
+      return;
+    }
     const body = {
       ...(groupId
-        ? { options: options.map((o) => o.trim()), ...(!product && { groupId }) }
+        ? {
+            options: options.map((o) => o.trim()),
+            ...(!product && { groupId }),
+          }
         : {
             internalName: internalName.trim(),
             publicName: publicName.trim(),
@@ -176,7 +288,11 @@ export function ProductForm({
                 <Select
                   aria-label="Quantity is per"
                   value={r.perPiece ? "piece" : "unit"}
-                  onChange={(e) => setRow(r.materialId, { perPiece: e.target.value === "piece" })}
+                  onChange={(e) =>
+                    setRow(r.materialId, {
+                      perPiece: e.target.value === "piece",
+                    })
+                  }
                   className="w-auto"
                 >
                   <option value="unit">{perUnit(saleUnit)}</option>
@@ -199,7 +315,14 @@ export function ProductForm({
             value=""
             onChange={(e) =>
               e.target.value &&
-              setRecipe((p) => [...p, { materialId: Number(e.target.value), qty: "", perPiece: false }])
+              setRecipe((p) => [
+                ...p,
+                {
+                  materialId: Number(e.target.value),
+                  qty: "",
+                  perPiece: false,
+                },
+              ])
             }
           >
             <option value="">+ Add {type === "RAW" ? "ingredient" : "packaging"}…</option>
@@ -225,8 +348,14 @@ export function ProductForm({
               <div>
                 <h2 className="font-semibold">Size of {group.name}</h2>
                 <p className="text-xs text-muted">
-                  Name: <strong>{[group.name, ...options].map((s) => s.trim()).filter(Boolean).join(" ")}</strong> · on
-                  invoices: {group.publicName}
+                  Name:{" "}
+                  <strong>
+                    {[group.name, ...options]
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                      .join(" ")}
+                  </strong>{" "}
+                  · on invoices: {group.publicName}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -237,7 +366,7 @@ export function ProductForm({
                       autoFocus={!product && i === 0}
                       value={options[i] ?? ""}
                       onChange={(e) =>
-                        setOptions(group.dimensions.map((_, j) => (j === i ? e.target.value : (options[j] ?? ""))))
+                        setOptions(group.dimensions.map((_, j) => (j === i ? e.target.value : options[j] ?? "")))
                       }
                     />
                   </Field>
@@ -247,29 +376,66 @@ export function ProductForm({
                 </Field>
               </div>
               {!product && template && (
-                <p className="text-xs text-muted">Copied from {template.internalName}. Change the size and whatever differs.</p>
+                <p className="text-xs text-muted">
+                  Copied from {template.internalName}. Change the size and whatever differs.
+                </p>
               )}
             </>
           )}
         </Card>
       ) : (
         <Card className="space-y-4 p-4">
-          <Field label="Product name (for you)" hint="Full details, e.g. Maida Noodles 1.5mm 10×500g">
-            <Input required value={internalName} onChange={(e) => setInternalName(e.target.value)} autoFocus={!product} />
+          {canHaveSizes && (
+            <div className="space-y-1">
+              <Segmented<"one" | "many">
+                value={multi ? "many" : "one"}
+                onChange={(v) => setMulti(v === "many")}
+                options={[
+                  { value: "one", label: "One size" },
+                  { value: "many", label: "Several sizes" },
+                ]}
+              />
+              <p className="text-xs text-muted">
+                {multi
+                  ? "e.g. Maida Noodles in 1.5mm and 1.8mm, 500g and 550g: one product, a row per size."
+                  : "Comes in different thickness or weight? Choose Several sizes."}
+              </p>
+            </div>
+          )}
+          <Field
+            label={sizesMode ? "Product name (without the size)" : "Product name (for you)"}
+            hint={
+              sizesMode
+                ? "e.g. Mahadeva Maida Noodles. Each size adds its values to this."
+                : "Full details, e.g. Maida Noodles 1.5mm 10×500g"
+            }
+          >
+            <Input
+              required
+              value={internalName}
+              onChange={(e) => setInternalName(e.target.value)}
+              autoFocus={!product}
+            />
           </Field>
           <Field label="Name on invoices" hint="What buyers see, e.g. Mahadeva Noodles. Internal details stay hidden.">
             <Input required value={publicName} onChange={(e) => setPublicName(e.target.value)} />
           </Field>
-          <Field label="Code" hint="Optional, e.g. MN-15">
-            <Input value={code} onChange={(e) => setCode(e.target.value)} />
-          </Field>
+          {!sizesMode && (
+            <Field label="Code" hint="Optional, e.g. MN-15">
+              <Input value={code} onChange={(e) => setCode(e.target.value)} />
+            </Field>
+          )}
         </Card>
       )}
 
       <Card className="space-y-4 p-4">
         <div>
           <h2 className="font-semibold">Packing</h2>
-          <p className="text-xs text-muted">How one unit you sell is packed. Each packing is its own product.</p>
+          <p className="text-xs text-muted">
+            {sizesMode
+              ? "How one unit you sell is packed, the same for every size. The piece size is set per size below."
+              : "How one unit you sell is packed."}
+          </p>
         </div>
         <Field label="Sold as">
           <Select value={saleUnit} onChange={(e) => setSaleUnit(e.target.value as Unit)}>
@@ -304,44 +470,231 @@ export function ProductForm({
               />
             </Field>
           )}
-          <Field
-            label={hasPieces && saleUnit !== "PCS" ? "Each piece" : "Size"}
-            hint={hasPieces && saleUnit !== "PCS" ? "e.g. 500 g" : `Optional, e.g. 25 kg per ${unitSingular(saleUnit)}`}
-          >
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="any"
-                value={packSize}
-                onChange={(e) => setPackSize(e.target.value)}
-              />
-              <Select value={packUnit} onChange={(e) => setPackUnit(e.target.value as Unit)} className="max-w-24">
+          {sizesMode ? (
+            <Field label={hasPieces && saleUnit !== "PCS" ? "Piece size in" : "Size in"}>
+              <Select value={packUnit} onChange={(e) => setPackUnit(e.target.value as Unit)}>
                 {SIZE_UNITS.map((u) => (
                   <option key={u.value} value={u.value}>
                     {u.short}
                   </option>
                 ))}
               </Select>
-            </div>
-          </Field>
-        </div>
-        <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm">
-          <strong>{pack.description}</strong>
-          {pack.units.length > 1 && (
-            <span className="text-muted">
-              {" "}
-              · sell by {unitSingular(saleUnit)} or by {unitSingular(pack.stockUnit)}
-            </span>
+            </Field>
+          ) : (
+            <Field
+              label={hasPieces && saleUnit !== "PCS" ? "Each piece" : "Size"}
+              hint={
+                hasPieces && saleUnit !== "PCS" ? "e.g. 500 g" : `Optional, e.g. 25 kg per ${unitSingular(saleUnit)}`
+              }
+            >
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  value={packSize}
+                  onChange={(e) => setPackSize(e.target.value)}
+                />
+                <Select value={packUnit} onChange={(e) => setPackUnit(e.target.value as Unit)} className="max-w-24">
+                  {SIZE_UNITS.map((u) => (
+                    <option key={u.value} value={u.value}>
+                      {u.short}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </Field>
           )}
-        </p>
+        </div>
+        {!sizesMode && (
+          <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm">
+            <strong>{pack.description}</strong>
+            {pack.units.length > 1 && (
+              <span className="text-muted">
+                {" "}
+                · sell by {unitSingular(saleUnit)} or by {unitSingular(pack.stockUnit)}
+              </span>
+            )}
+          </p>
+        )}
       </Card>
+
+      {sizesMode && (
+        <Card className="space-y-4 p-4">
+          <div>
+            <h2 className="font-semibold">Sizes</h2>
+            <p className="text-xs text-muted">What changes between sizes, then a row per size you make.</p>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            {dims.map((d, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <Input
+                  required
+                  aria-label={`Dimension ${i + 1}`}
+                  placeholder="e.g. Thickness"
+                  value={d}
+                  onChange={(e) => setDims(dims.map((x, j) => (j === i ? e.target.value : x)))}
+                  className="w-32"
+                />
+                {dims.length > 1 && (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${d}`}
+                    onClick={() => {
+                      setDims(dims.filter((_, j) => j !== i));
+                      setSizes((prev) =>
+                        prev.map((s) => ({
+                          ...s,
+                          options: s.options.filter((_, j) => j !== i),
+                        }))
+                      );
+                    }}
+                    className="rounded p-1 text-muted hover:bg-surface-2"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            {dims.length < 4 && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setDims([...dims, ""]);
+                  setSizes((prev) => prev.map((s) => ({ ...s, options: [...s.options, ""] })));
+                }}
+              >
+                + Add
+              </Button>
+            )}
+          </div>
+
+          {sizes.map((s, n) => {
+            const name = [internalName, ...s.options]
+              .map((x) => x.trim())
+              .filter(Boolean)
+              .join(" ");
+            const rowPack = packFor({
+              saleUnit,
+              piecesPerUnit,
+              packSize: s.packSize === "" ? null : Number(s.packSize),
+              packUnit: s.packSize === "" ? null : packUnit,
+            });
+            return (
+              <div key={s.key} className="space-y-2 rounded-lg border border-border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 text-sm">
+                    <p className="truncate font-medium">{name || `Size ${n + 1}`}</p>
+                    <p className="text-xs text-muted">{rowPack.description}</p>
+                  </div>
+                  {sizes.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label="Remove size"
+                      onClick={() => setSizes((prev) => prev.filter((x) => x.key !== s.key))}
+                      className="rounded p-1 text-muted hover:bg-surface-2"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {dims.map((d, i) => (
+                    <Field key={i} label={d || `Value ${i + 1}`}>
+                      <Input
+                        required
+                        list={`size-dim-${i}`}
+                        placeholder={
+                          d.toLowerCase().includes("thick") ? "e.g. 1.5mm" : /weight/i.test(d) ? "e.g. 500g" : undefined
+                        }
+                        value={s.options[i] ?? ""}
+                        onChange={(e) => setSizeValue(s, i, e.target.value)}
+                      />
+                    </Field>
+                  ))}
+                  <Field label={`${hasPieces && saleUnit !== "PCS" ? "Piece" : "Size"} (${unitShort(packUnit)})`}>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="any"
+                      required={hasPieces && saleUnit !== "PCS"}
+                      value={s.packSize}
+                      onChange={(e) =>
+                        setSize(s.key, {
+                          packSize: e.target.value,
+                          sizeTyped: e.target.value !== "",
+                        })
+                      }
+                    />
+                  </Field>
+                  <Field label={`Price ₹ ${perUnit(saleUnit)}`}>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="0.01"
+                      required
+                      value={s.price}
+                      onChange={(e) => setSize(s.key, { price: e.target.value })}
+                    />
+                  </Field>
+                  <Field label={`Ready now (${unitShort(saleUnit)})`}>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="any"
+                      placeholder="0"
+                      value={s.openingQty}
+                      onChange={(e) => setSize(s.key, { openingQty: e.target.value })}
+                    />
+                  </Field>
+                </div>
+              </div>
+            );
+          })}
+          {dims.map((_, i) => (
+            <datalist key={i} id={`size-dim-${i}`}>
+              {[...new Set(sizes.map((s) => s.options[i]?.trim()).filter(Boolean))].map((v) => (
+                <option key={v} value={v} />
+              ))}
+            </datalist>
+          ))}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setSizes((prev) => [...prev, emptySize(prev[prev.length - 1])])}
+            >
+              + Add size
+            </Button>
+            {sizes.some((s) => s.openingQty !== "") && (
+              <label className="flex items-center gap-2 text-sm">
+                Counted on
+                <Input
+                  type="date"
+                  max={todayIST()}
+                  value={openingDate}
+                  onChange={(e) => setOpeningDate(e.target.value)}
+                />
+              </label>
+            )}
+          </div>
+          <p className="text-xs text-muted">
+            + Add size copies the row above. Price per piece, MRP and code can be set on each size afterwards.
+          </p>
+        </Card>
+      )}
 
       <Card className="space-y-4 p-4">
         <div>
-          <h2 className="font-semibold">Price & GST</h2>
-          {twoUnits && (
+          <h2 className="font-semibold">{sizesMode ? "GST" : "Price & GST"}</h2>
+          {twoUnits && !sizesMode && (
             <p className="text-xs text-muted">
               Fill one or both. A blank price is worked out from the other, e.g. {perUnit(pack.stockUnit)} ={" "}
               {perUnit(saleUnit)} ÷ {formatQty(per)}.
@@ -349,49 +702,64 @@ export function ProductForm({
           )}
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Field
-            label={`Selling price ${perUnit(saleUnit)} (₹)`}
-            hint={
-              twoUnits && price === "" && pricePerSaleUnit !== null
-                ? `Blank = ${formatINR(pricePerSaleUnit)} (from ${perUnit(pack.stockUnit)} price)`
-                : undefined
-            }
-          >
-            <Input
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="0.01"
-              required={!twoUnits || piecePrice === ""}
-              placeholder={twoUnits && pricePerSaleUnit !== null && price === "" ? String(pricePerSaleUnit) : undefined}
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-            />
-          </Field>
-          {twoUnits && (
-            <Field
-              label={`Selling price ${perUnit(pack.stockUnit)} (₹)`}
-              hint={
-                piecePrice === "" && derivedPiecePrice !== null
-                  ? `Blank = ${formatINR(derivedPiecePrice)} (from ${perUnit(saleUnit)} price)`
-                  : undefined
-              }
-            >
-              <Input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="0.01"
-                required={price === ""}
-                placeholder={derivedPiecePrice !== null && piecePrice === "" ? String(derivedPiecePrice) : undefined}
-                value={piecePrice}
-                onChange={(e) => setPiecePrice(e.target.value)}
-              />
-            </Field>
+          {!sizesMode && (
+            <>
+              <Field
+                label={`Selling price ${perUnit(saleUnit)} (₹)`}
+                hint={
+                  twoUnits && price === "" && pricePerSaleUnit !== null
+                    ? `Blank = ${formatINR(pricePerSaleUnit)} (from ${perUnit(pack.stockUnit)} price)`
+                    : undefined
+                }
+              >
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  required={!twoUnits || piecePrice === ""}
+                  placeholder={
+                    twoUnits && pricePerSaleUnit !== null && price === "" ? String(pricePerSaleUnit) : undefined
+                  }
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+              </Field>
+              {twoUnits && (
+                <Field
+                  label={`Selling price ${perUnit(pack.stockUnit)} (₹)`}
+                  hint={
+                    piecePrice === "" && derivedPiecePrice !== null
+                      ? `Blank = ${formatINR(derivedPiecePrice)} (from ${perUnit(saleUnit)} price)`
+                      : undefined
+                  }
+                >
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.01"
+                    required={price === ""}
+                    placeholder={
+                      derivedPiecePrice !== null && piecePrice === "" ? String(derivedPiecePrice) : undefined
+                    }
+                    value={piecePrice}
+                    onChange={(e) => setPiecePrice(e.target.value)}
+                  />
+                </Field>
+              )}
+              <Field label="MRP (₹)" hint="Optional">
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  value={mrp}
+                  onChange={(e) => setMrp(e.target.value)}
+                />
+              </Field>
+            </>
           )}
-          <Field label="MRP (₹)" hint="Optional">
-            <Input type="number" inputMode="decimal" min={0} step="0.01" value={mrp} onChange={(e) => setMrp(e.target.value)} />
-          </Field>
           {!groupId && (
             <>
               <Field label="HSN code" hint="e.g. 1902 for noodles">
@@ -411,8 +779,8 @@ export function ProductForm({
         </div>
         {group && (
           <p className="text-xs text-muted">
-            HSN {group.hsnCode ?? "—"} and GST {group.gstRate !== null ? `${Number(group.gstRate)}%` : "—"} are shared by
-            every size of {group.name}.
+            HSN {group.hsnCode ?? "—"} and GST {group.gstRate !== null ? `${Number(group.gstRate)}%` : "—"} are shared
+            by every size of {group.name}.
           </p>
         )}
       </Card>
@@ -423,13 +791,15 @@ export function ProductForm({
           <p className="text-xs text-muted">
             Quantities can be filled in later. Used for cost estimates.
             {piecesPerUnit !== null && " Choose per piece for things like pouches, per pack for the outer bag."}
+            {sizesMode && " Copied to every size; adjust each size's recipe afterwards if they differ."}
           </p>
         </div>
         {recipeSection("RAW")}
         {recipeSection("SUPPLY")}
         {recipe.length > 0 && (
           <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm">
-            Estimated material cost {perUnit(saleUnit)}: <strong>{formatINR(Math.round(estimate.total * 100) / 100)}</strong>
+            Estimated material cost {perUnit(saleUnit)}:{" "}
+            <strong>{formatINR(Math.round(estimate.total * 100) / 100)}</strong>
             {estimate.missing && <span className="text-muted"> (some quantities or prices missing)</span>}
             {pricePerSaleUnit !== null && !estimate.missing && (
               <span className="text-muted">
@@ -468,12 +838,17 @@ export function ProductForm({
             </button>
           </div>
         ))}
-        <Button type="button" variant="secondary" size="sm" onClick={() => setSpecs((p) => [...p, { key: "", value: "" }])}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => setSpecs((p) => [...p, { key: "", value: "" }])}
+        >
           + Add spec
         </Button>
       </Card>
 
-      {!product && (
+      {!product && !sizesMode && (
         <Card className="space-y-4 p-4">
           <div>
             <h2 className="font-semibold">Ready stock</h2>
@@ -492,7 +867,12 @@ export function ProductForm({
             </Field>
             {openingQty !== "" && (
               <Field label="Counted on">
-                <Input type="date" max={todayIST()} value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} />
+                <Input
+                  type="date"
+                  max={todayIST()}
+                  value={openingDate}
+                  onChange={(e) => setOpeningDate(e.target.value)}
+                />
               </Field>
             )}
           </div>
