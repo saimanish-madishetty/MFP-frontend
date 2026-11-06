@@ -6,9 +6,9 @@ import { Suspense, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import { formatDay, formatINR, todayIST } from "@/lib/format";
-import { PRODUCT_MOVEMENT_LABEL, formatStock, perUnit, sizeLabel, type ProductDetail } from "@/lib/products";
+import { PRODUCT_MOVEMENT_LABEL, formatStock, perUnit, sizeLabel, unitFactor, type ProductDetail } from "@/lib/products";
 import { DeleteForever } from "@/components/DeleteForever";
-import { formatQty, unitShort, type ProductWastage, type Unit, type WastageLine } from "@/lib/stock";
+import { formatQty, unitShort, type ProductWastage, type WastageLine } from "@/lib/stock";
 import {
   Badge,
   Button,
@@ -27,13 +27,25 @@ import {
 function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: () => void }) {
   const { mutate } = useSWRConfig();
   const [mode, setMode] = useState<"count" | "change">("count");
-  const [unit, setUnit] = useState<Unit>(product.saleUnit);
+  // Like production: packs (bags) plus loose pieces (kg) for products counted in two units.
   const [value, setValue] = useState("");
+  const [extra, setExtra] = useState("");
   const [direction, setDirection] = useState<"remove" | "add">("remove");
   const [reason, setReason] = useState("Count correction");
   const [date, setDate] = useState(todayIST());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
+
+  const twoUnits = product.pack.units.length > 1;
+  const stockUnit = product.pack.stockUnit;
+  // Everything is sent in stock units (pieces, kg) so a mix adds up exactly.
+  const entered =
+    Math.round(
+      ((Number(value) || 0) * unitFactor(product, product.saleUnit) + (twoUnits ? Number(extra) || 0 : 0)) * 1000,
+    ) / 1000;
+  const current = Number(product.currentQty);
+  const after = mode === "count" ? entered : current + (direction === "add" ? entered : -entered);
+  const blank = value === "" && (!twoUnits || extra === "");
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,10 +55,10 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
       await api(`/products/${product.id}/adjustments`, "POST", {
         date,
         reason: reason.trim(),
-        unit,
+        unit: twoUnits ? stockUnit : product.saleUnit,
         ...(mode === "count"
-          ? { countedQty: Number(value) }
-          : { quantity: (direction === "add" ? 1 : -1) * Number(value) }),
+          ? { countedQty: entered }
+          : { quantity: (direction === "add" ? 1 : -1) * entered }),
       });
       await mutate((k) => typeof k === "string" && k.startsWith("/products"));
       onClose();
@@ -71,13 +83,6 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
           ]}
         />
         <p className="text-sm text-muted">In the app: {formatStock(product, product.currentQty)}</p>
-        {product.pack.units.length > 1 && (
-          <Segmented<Unit>
-            value={unit}
-            onChange={setUnit}
-            options={product.pack.units.map((u) => ({ value: u.unit, label: `In ${unitShort(u.unit)}` }))}
-          />
-        )}
         {mode === "change" && (
           <Segmented<"remove" | "add">
             value={direction}
@@ -88,18 +93,48 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
             ]}
           />
         )}
-        <Field label={mode === "count" ? `Actual count (${unitShort(unit)})` : `Quantity (${unitShort(unit)})`}>
-          <Input
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="any"
-            required
-            autoFocus
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-          />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field
+            label={`${mode === "count" ? "Actual count" : "Quantity"} (${unitShort(product.saleUnit)})`}
+          >
+            <Input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              required={!twoUnits || extra === ""}
+              autoFocus
+              placeholder={twoUnits ? "0" : undefined}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+          </Field>
+          {twoUnits && (
+            <Field label={`+ ${unitShort(stockUnit)}`}>
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                placeholder="0"
+                value={extra}
+                onChange={(e) => setExtra(e.target.value)}
+              />
+            </Field>
+          )}
+        </div>
+        {!blank && (
+          <p className={`text-sm ${after < 0 ? "text-red-600 dark:text-red-400" : "text-muted"}`}>
+            {mode === "count" ? (
+              <>
+                Change: {entered - current >= 0 ? "+" : "−"}
+                {formatStock(product, Math.abs(entered - current))}
+              </>
+            ) : (
+              <>After: {formatStock(product, after)}</>
+            )}
+          </p>
+        )}
         <Field label="Reason" hint="e.g. Damaged, Samples given, Count correction">
           <Input required value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
@@ -107,7 +142,7 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
           <Input type="date" max={todayIST()} required value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
         <ErrorBox error={error} />
-        <Button type="submit" size="lg" className="w-full" disabled={saving || value === ""}>
+        <Button type="submit" size="lg" className="w-full" disabled={saving || blank}>
           {saving ? "Saving…" : "Save adjustment"}
         </Button>
       </form>
