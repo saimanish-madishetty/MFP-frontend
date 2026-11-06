@@ -6,7 +6,7 @@ import { Suspense, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import { formatDay, formatINR, todayIST } from "@/lib/format";
-import { PRODUCT_MOVEMENT_LABEL, formatStock, perUnit, type ProductDetail } from "@/lib/products";
+import { PRODUCT_MOVEMENT_LABEL, formatStock, perUnit, sizeLabel, type ProductDetail } from "@/lib/products";
 import { DeleteForever } from "@/components/DeleteForever";
 import { formatQty, unitShort, type ProductWastage, type Unit, type WastageLine } from "@/lib/stock";
 import {
@@ -202,9 +202,19 @@ function ProductDetailView() {
     <div className="mx-auto max-w-3xl space-y-4">
       <PageHeader
         title={p.internalName}
-        back="/products/"
+        back={p.group ? `/products/group/?id=${p.group.id}` : "/products/"}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
+            {p.group && (
+              <>
+                Size{" "}
+                <strong className="text-foreground">{sizeLabel(p)}</strong> of{" "}
+                <Link href={`/products/group/?id=${p.group.id}`} className="text-brand">
+                  {p.group.name}
+                </Link>
+                {" · "}
+              </>
+            )}
             On invoices: <strong className="text-foreground">{p.publicName}</strong>
             {p.code && <Badge>{p.code}</Badge>}
             {!p.active && <Badge>Archived</Badge>}
@@ -212,9 +222,20 @@ function ProductDetailView() {
         }
         actions={
           <>
-            <ButtonLink href={`/products/new/?from=${p.id}`} variant="secondary">
-              Duplicate
-            </ButtonLink>
+            {p.group ? (
+              <ButtonLink href={`/products/new/?group=${p.group.id}&from=${p.id}`} variant="secondary">
+                + Add size
+              </ButtonLink>
+            ) : (
+              <>
+                <ButtonLink href={`/products/group/edit/?from=${p.id}`} variant="secondary">
+                  Make sizes
+                </ButtonLink>
+                <ButtonLink href={`/products/new/?from=${p.id}`} variant="secondary">
+                  Duplicate
+                </ButtonLink>
+              </>
+            )}
             <ButtonLink href={`/products/edit/?id=${p.id}`} variant="secondary">
               Edit
             </ButtonLink>

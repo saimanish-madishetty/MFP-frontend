@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { formatStock, unitFactor, type Product } from "@/lib/products";
 import { formatQty, unitShort, type MaterialListItem, type ProductionDay, type Unit } from "@/lib/stock";
 import { Button, ButtonLink, DateStepper, Empty, ErrorBox, Input, Loading, Select, Textarea } from "@/components/ui";
+import { ProductPicker } from "@/components/products/ProductPicker";
 
 /** A raw material used for a product. Untouched lines follow the recipe as the quantity made changes. */
 type MaterialLine = { materialId: number; used: string; touched: boolean };
@@ -340,14 +341,12 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
       })}
 
       {addable.length > 0 && (
-        <Select value="" onChange={(e) => e.target.value && addProduct(Number(e.target.value))}>
-          <option value="">+ Add product made…</option>
-          {addable.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.internalName} · {p.pack.description}
-            </option>
-          ))}
-        </Select>
+        <ProductPicker
+          products={addable}
+          placeholder="+ Add product made…"
+          onPick={addProduct}
+          detail={(p) => p.pack.description}
+        />
       )}
 
       {/* Supplies and other materials used for the day as a whole */}

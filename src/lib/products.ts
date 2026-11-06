@@ -42,6 +42,11 @@ export type Product = {
   /** In `pack.stockUnit` */
   currentQty: string;
   active: boolean;
+  /** Set when this is one size of a product group; names, HSN and GST then come from the group */
+  groupId: number | null;
+  /** This size's value for each of the group's dimensions, e.g. ["1.5mm", "500g"] */
+  options: string[];
+  group: { id: number; name: string; dimensions: string[] } | null;
   materials: ProductMaterialLine[];
   pack: Pack;
   cost: { costPerUnit: string | null; incomplete: boolean; margin: string | null };
@@ -161,3 +166,102 @@ export const PRODUCT_MOVEMENT_LABEL: Record<ProductMovementType, string> = {
 };
 
 export const GST_RATES = ["0", "5", "12", "18", "28"];
+
+// ───────────────────────── Product groups (one product in several sizes) ─────────────────────────
+
+export type ProductGroup = {
+  id: number;
+  name: string;
+  publicName: string;
+  hsnCode: string | null;
+  gstRate: string | null;
+  dimensions: string[];
+  products: { id: number; options: string[]; active: boolean }[];
+};
+
+/** "1.5mm · 500g"; empty for a product on its own. */
+export const sizeLabel = (p: { options: string[] }) => p.options.join(" · ");
+
+/** A product group with its sizes, or a product on its own. */
+export type Listed =
+  | { kind: "group"; key: string; group: NonNullable<Product["group"]>; sizes: Product[] }
+  | { kind: "single"; key: string; product: Product };
+
+/** Sizes compared value by value, numbers numerically ("1.5mm" before "10mm"). */
+export function compareSizes(a: { options: string[] }, b: { options: string[] }): number {
+  for (let i = 0; i < Math.max(a.options.length, b.options.length); i++) {
+    const c = (a.options[i] ?? "").localeCompare(b.options[i] ?? "", undefined, { numeric: true });
+    if (c !== 0) return c;
+  }
+  return 0;
+}
+
+/** Groups sizes together (in the position of the group's first size), keeping the list's order otherwise. */
+export function groupProducts(products: Product[]): Listed[] {
+  const out: Listed[] = [];
+  const groups = new Map<number, Extract<Listed, { kind: "group" }>>();
+  for (const p of products) {
+    if (p.groupId === null || !p.group) {
+      out.push({ kind: "single", key: `p${p.id}`, product: p });
+      continue;
+    }
+    let g = groups.get(p.groupId);
+    if (!g) {
+      g = { kind: "group", key: `g${p.groupId}`, group: p.group, sizes: [] };
+      groups.set(p.groupId, g);
+      out.push(g);
+    }
+    g.sizes.push(p);
+  }
+  for (const g of groups.values()) g.sizes.sort(compareSizes);
+  return out;
+}
+
+/** What a word in a product name looks like it describes. */
+function dimensionOf(word: string): string {
+  if (/^\d+(\.\d+)?\s*mm$/i.test(word)) return "Thickness";
+  if (/^\d+(\.\d+)?\s*(g|gm|gms|kg|grams?)$/i.test(word)) return "Weight";
+  if (/^\d+(\.\d+)?\s*(ml|l|ltr)$/i.test(word)) return "Volume";
+  return "Size";
+}
+
+/**
+ * Guesses a group from product names: the words they all start with become the group's name, the
+ * rest the sizes. "Atta Noodles 500g 1.5mm" and "Atta Noodles 1.5mm 550g" give "Atta Noodles" with
+ * Thickness and Weight, whatever order the words were in.
+ */
+export function guessSizes(names: string[]): { name: string; dimensions: string[]; options: string[][] } {
+  const words = names.map((n) => n.trim().split(/\s+/));
+  // The name stops at the first word that looks like a size, or where the names start to differ.
+  const first = words[0] ?? [];
+  let common = 0;
+  while (
+    common < first.length &&
+    dimensionOf(first[common]) === "Size" &&
+    (words.length === 1 ||
+      words.every((w) => common < w.length - 1 && w[common].toLowerCase() === first[common].toLowerCase()))
+  )
+    common++;
+  if (words.length > 1 && common === first.length) common = 0;
+  const name = words[0]?.slice(0, common).join(" ") ?? "";
+  const rests = words.map((w) => w.slice(common));
+  // Dimensions in the order they first appear; unknown words share "Size" (then "Size 2", …).
+  const dimensions: string[] = [];
+  const tagged = rests.map((rest) => {
+    const seen = new Map<string, number>();
+    return rest.map((word) => {
+      const base = dimensionOf(word);
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      const dim = n === 1 ? base : `${base} ${n}`;
+      if (!dimensions.includes(dim)) dimensions.push(dim);
+      return { dim, word };
+    });
+  });
+  const ORDER = ["Thickness", "Weight", "Volume", "Size"];
+  const rank = (d: string) => ORDER.indexOf(d.replace(/ \d+$/, "")) * 10 + Number(d.match(/ (\d+)$/)?.[1] ?? 1);
+  dimensions.sort((x, y) => rank(x) - rank(y));
+  if (dimensions.length === 0) return { name, dimensions: ["Size"], options: words.map(() => [""]) };
+  const options = tagged.map((t) => dimensions.map((d) => t.find((x) => x.dim === d)?.word ?? ""));
+  return { name, dimensions, options };
+}

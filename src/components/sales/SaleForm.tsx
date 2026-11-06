@@ -12,6 +12,7 @@ import { previewInvoice, type CompanyProfile, type SaleDetail } from "@/lib/sale
 import { unitShort, type Unit } from "@/lib/stock";
 import { PAYMENT_MODES, type PaymentMode } from "@/lib/workers";
 import { Button, Card, ErrorBox, Field, Input, Loading, Row, Select, Textarea } from "@/components/ui";
+import { ProductPicker } from "@/components/products/ProductPicker";
 
 /** `unit` is what quantity and rate are in: the product's pack/bag, or a piece/kg. */
 type LineState = { key: number; productId: number; unit: Unit; quantity: string; rate: string; discount: string };
@@ -298,16 +299,12 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
             </div>
           );
         })}
-        <Select searchable value="" onChange={(e) => e.target.value && addLine(Number(e.target.value))}>
-          <option value="">+ Add product…</option>
-          {products
-            .filter((p) => p.active)
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.internalName} · {formatINR(priceFor(p, p.saleUnit) ?? 0)} {perUnit(p.saleUnit)}
-              </option>
-            ))}
-        </Select>
+        <ProductPicker
+          products={products.filter((p) => p.active)}
+          placeholder="+ Add product…"
+          onPick={addLine}
+          detail={(p) => `${formatINR(priceFor(p, p.saleUnit) ?? 0)} ${perUnit(p.saleUnit)}`}
+        />
         {products.length === 0 && (
           <p className="text-sm text-muted">
             No products yet.{" "}

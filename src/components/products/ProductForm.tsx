@@ -5,9 +5,17 @@ import { useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import { formatINR, todayIST } from "@/lib/format";
-import { GST_RATES, packFor, perUnit, unitFactor, unitSingular, type Product } from "@/lib/products";
+import {
+  GST_RATES,
+  packFor,
+  perUnit,
+  unitFactor,
+  unitSingular,
+  type Product,
+  type ProductGroup,
+} from "@/lib/products";
 import { UNITS, formatQty, unitShort, type MaterialListItem, type Unit } from "@/lib/stock";
-import { Button, Card, ErrorBox, Field, Input, Segmented, Select } from "@/components/ui";
+import { Button, Card, ErrorBox, Field, Input, Loading, Segmented, Select } from "@/components/ui";
 
 type RecipeRow = { materialId: number; qty: string; perPiece: boolean };
 type SpecRow = { key: string; value: string };
@@ -20,11 +28,26 @@ const SIZE_UNITS = UNITS.filter((u) => ["G", "KG", "ML", "L"].includes(u.value))
  * Add or edit a product. `template` pre-fills a new product from an existing one ("Duplicate"),
  * with every field copied (names and code too: the backend rejects an unchanged name or code).
  */
-export function ProductForm({ product, template }: { product?: Product; template?: Product }) {
+export function ProductForm({
+  product,
+  template,
+  groupId: newInGroup,
+}: {
+  product?: Product;
+  template?: Product;
+  /** A new size of this product group */
+  groupId?: number;
+}) {
   const router = useRouter();
   const { mutate } = useSWRConfig();
   const { data: materials } = useSWR<MaterialListItem[]>("/materials?includeInactive=true");
   const src = product ?? template;
+  // A size of a group: its names, HSN and GST come from the group; it has a value per dimension.
+  const groupId = product ? product.groupId : (newInGroup ?? null);
+  const { data: group } = useSWR<ProductGroup>(groupId ? `/product-groups/${groupId}` : null);
+  const [options, setOptions] = useState<string[]>(
+    groupId && src?.groupId === groupId ? src.options : [],
+  );
 
   const [internalName, setInternalName] = useState(src?.internalName ?? "");
   const [publicName, setPublicName] = useState(src?.publicName ?? "");
@@ -82,8 +105,14 @@ export function ProductForm({ product, template }: { product?: Product; template
     setSaving(true);
     setError(null);
     const body = {
-      internalName: internalName.trim(),
-      publicName: publicName.trim(),
+      ...(groupId
+        ? { options: options.map((o) => o.trim()), ...(!product && { groupId }) }
+        : {
+            internalName: internalName.trim(),
+            publicName: publicName.trim(),
+            hsnCode: hsnCode.trim() || null,
+            gstRate: Number(gstRate),
+          }),
       code: code.trim() || null,
       saleUnit,
       piecesPerUnit,
@@ -92,8 +121,6 @@ export function ProductForm({ product, template }: { product?: Product; template
       price: price === "" ? null : Number(price),
       piecePrice: twoUnits && piecePrice !== "" ? Number(piecePrice) : null,
       mrp: mrp === "" ? null : Number(mrp),
-      hsnCode: hsnCode.trim() || null,
-      gstRate: Number(gstRate),
       specs: specs.filter((s) => s.key.trim()),
       materials: recipe.map((r) => ({
         materialId: r.materialId,
@@ -189,17 +216,55 @@ export function ProductForm({ product, template }: { product?: Product; template
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Card className="space-y-4 p-4">
-        <Field label="Product name (for you)" hint="Full details, e.g. Maida Noodles 1.5mm 10×500g">
-          <Input required value={internalName} onChange={(e) => setInternalName(e.target.value)} autoFocus={!product} />
-        </Field>
-        <Field label="Name on invoices" hint="What buyers see, e.g. Mahadeva Noodles. Internal details stay hidden.">
-          <Input required value={publicName} onChange={(e) => setPublicName(e.target.value)} />
-        </Field>
-        <Field label="Code" hint="Optional, e.g. MN-15">
-          <Input value={code} onChange={(e) => setCode(e.target.value)} />
-        </Field>
-      </Card>
+      {groupId ? (
+        <Card className="space-y-4 p-4">
+          {!group ? (
+            <Loading />
+          ) : (
+            <>
+              <div>
+                <h2 className="font-semibold">Size of {group.name}</h2>
+                <p className="text-xs text-muted">
+                  Name: <strong>{[group.name, ...options].map((s) => s.trim()).filter(Boolean).join(" ")}</strong> · on
+                  invoices: {group.publicName}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {group.dimensions.map((d, i) => (
+                  <Field key={d} label={d}>
+                    <Input
+                      required
+                      autoFocus={!product && i === 0}
+                      value={options[i] ?? ""}
+                      onChange={(e) =>
+                        setOptions(group.dimensions.map((_, j) => (j === i ? e.target.value : (options[j] ?? ""))))
+                      }
+                    />
+                  </Field>
+                ))}
+                <Field label="Code" hint="Optional, e.g. MN-15">
+                  <Input value={code} onChange={(e) => setCode(e.target.value)} />
+                </Field>
+              </div>
+              {!product && template && (
+                <p className="text-xs text-muted">Copied from {template.internalName}. Change the size and whatever differs.</p>
+              )}
+            </>
+          )}
+        </Card>
+      ) : (
+        <Card className="space-y-4 p-4">
+          <Field label="Product name (for you)" hint="Full details, e.g. Maida Noodles 1.5mm 10×500g">
+            <Input required value={internalName} onChange={(e) => setInternalName(e.target.value)} autoFocus={!product} />
+          </Field>
+          <Field label="Name on invoices" hint="What buyers see, e.g. Mahadeva Noodles. Internal details stay hidden.">
+            <Input required value={publicName} onChange={(e) => setPublicName(e.target.value)} />
+          </Field>
+          <Field label="Code" hint="Optional, e.g. MN-15">
+            <Input value={code} onChange={(e) => setCode(e.target.value)} />
+          </Field>
+        </Card>
+      )}
 
       <Card className="space-y-4 p-4">
         <div>
@@ -327,19 +392,29 @@ export function ProductForm({ product, template }: { product?: Product; template
           <Field label="MRP (₹)" hint="Optional">
             <Input type="number" inputMode="decimal" min={0} step="0.01" value={mrp} onChange={(e) => setMrp(e.target.value)} />
           </Field>
-          <Field label="HSN code" hint="e.g. 1902 for noodles">
-            <Input value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} />
-          </Field>
-          <Field label="GST rate">
-            <Select value={gstRate} onChange={(e) => setGstRate(e.target.value)}>
-              {GST_RATES.map((r) => (
-                <option key={r} value={r}>
-                  {r}%
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {!groupId && (
+            <>
+              <Field label="HSN code" hint="e.g. 1902 for noodles">
+                <Input value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} />
+              </Field>
+              <Field label="GST rate">
+                <Select value={gstRate} onChange={(e) => setGstRate(e.target.value)}>
+                  {GST_RATES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}%
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </>
+          )}
         </div>
+        {group && (
+          <p className="text-xs text-muted">
+            HSN {group.hsnCode ?? "—"} and GST {group.gstRate !== null ? `${Number(group.gstRate)}%` : "—"} are shared by
+            every size of {group.name}.
+          </p>
+        )}
       </Card>
 
       <Card className="space-y-4 p-4">
