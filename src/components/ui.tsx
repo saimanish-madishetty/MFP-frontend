@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useBackClose } from "@/lib/back-stack";
 import { BackLink } from "./BackLink";
 import { Dropdown, type DropdownProps } from "./Dropdown";
@@ -87,15 +87,7 @@ export function Badge({
   );
 }
 
-export function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
+export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1">
       <span className="text-sm font-medium">{label}</span>
@@ -112,7 +104,97 @@ const INPUT =
 const inputClass = (extra = "") => `${INPUT} ${/(^|\s)w-/.test(extra) ? "" : "w-full"} ${extra}`;
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  if (props.type === "number") return <NumberInput {...props} />;
   return <input {...props} className={inputClass(props.className)} />;
+}
+
+/** "100000.5" → "1,00,000.5": Indian digit grouping, keeping whatever is typed after the point. */
+export function groupIndian(raw: string): string {
+  const m = raw.match(/^(-?)(\d*)(\.?\d*)$/);
+  if (!m || !m[2]) return raw;
+  const [, sign, int, frac] = m;
+  const last3 = int.slice(-3);
+  const rest = int.slice(0, -3);
+  return sign + (rest ? `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",")},${last3}` : last3) + frac;
+}
+
+/**
+ * `<Input type="number">`: shown with Indian commas while typing (40,000 · 1,00,000), but the value
+ * passed to `onChange` stays plain ("100000"), so screens use it as before. A browser number box
+ * can't show commas, so this is a text box that only accepts a number; min/max are checked on save.
+ */
+function NumberInput({
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  className,
+  inputMode,
+  ...rest
+}: React.InputHTMLAttributes<HTMLInputElement>) {
+  const ref = useRef<HTMLInputElement>(null);
+  /** Characters (not counting commas) before the cursor, to put it back after commas move. */
+  const caret = useRef<number | null>(null);
+  const raw = value === undefined || value === null ? "" : String(value);
+  const minN = min === undefined || min === "" ? undefined : Number(min);
+  const maxN = max === undefined || max === "" ? undefined : Number(max);
+  const decimals = !(step === 1 || step === "1");
+  const negative = minN === undefined || minN < 0;
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || caret.current === null || document.activeElement !== el) return;
+    let left = caret.current;
+    let pos = 0;
+    while (pos < el.value.length && left > 0) {
+      if (el.value[pos] !== ",") left--;
+      pos++;
+    }
+    el.setSelectionRange(pos, pos);
+    caret.current = null;
+  });
+
+  useEffect(() => {
+    const n = Number(raw);
+    ref.current?.setCustomValidity(
+      raw === ""
+        ? ""
+        : raw === "-" || raw === "." || Number.isNaN(n)
+        ? "Enter a number"
+        : minN !== undefined && n < minN
+        ? `Must be at least ${groupIndian(String(minN))}`
+        : maxN !== undefined && n > maxN
+        ? `Must be at most ${groupIndian(String(maxN))}`
+        : ""
+    );
+  }, [raw, minN, maxN]);
+
+  // Only what a number can have: digits, one point (unless whole numbers), a leading minus if allowed.
+  const clean = (s: string) => {
+    let v = s.replace(decimals ? /[^\d.-]/g : /[^\d-]/g, "");
+    v = (negative && v.startsWith("-") ? "-" : "") + v.replace(/-/g, "");
+    const dot = v.indexOf(".");
+    return dot < 0 ? v : v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, "");
+  };
+
+  return (
+    <input
+      {...rest}
+      ref={ref}
+      type="text"
+      inputMode={inputMode ?? (decimals ? "decimal" : "numeric")}
+      autoComplete="off"
+      value={groupIndian(raw)}
+      onChange={(e) => {
+        const typed = e.target.value;
+        caret.current = clean(typed.slice(0, e.target.selectionStart ?? typed.length)).length;
+        const next = clean(typed);
+        onChange?.({ ...e, target: { ...e.target, value: next } } as unknown as React.ChangeEvent<HTMLInputElement>);
+      }}
+      className={inputClass(className)}
+    />
+  );
 }
 
 /** The app's dropdown (see Dropdown.tsx): takes `<option>` children like a `<select>`. */
@@ -203,9 +285,7 @@ export function PageHeader({
   return (
     <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        {back && (
-          <BackLink href={back} />
-        )}
+        {back && <BackLink href={back} />}
         <h1 className="truncate text-2xl font-semibold">{title}</h1>
         {subtitle && <div className="text-sm text-muted">{subtitle}</div>}
       </div>
@@ -280,7 +360,11 @@ export function Row({
   muted?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between gap-4 py-1 ${strong ? "font-semibold" : ""} ${muted ? "text-muted" : ""}`}>
+    <div
+      className={`flex items-center justify-between gap-4 py-1 ${strong ? "font-semibold" : ""} ${
+        muted ? "text-muted" : ""
+      }`}
+    >
       <span>{label}</span>
       <span className="tabular-nums">{value}</span>
     </div>
