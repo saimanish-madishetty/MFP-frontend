@@ -1,14 +1,26 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useState, useSyncExternalStore } from "react";
 import useSWR from "swr";
 import { api } from "@/lib/api";
 import { INDIAN_STATES } from "@/lib/buyers";
 import type { CompanyProfile } from "@/lib/sales";
+import { getTheme, setTheme, subscribeTheme, type ThemeChoice } from "@/lib/theme";
 import { useAuth } from "@/lib/use-auth";
 import { UserList } from "@/components/settings/UserList";
-import { Button, Card, ErrorBox, Field, Input, Loading, PageHeader, Segmented, Select, Textarea } from "@/components/ui";
+import {
+  Button,
+  Card,
+  ErrorBox,
+  Field,
+  Input,
+  Loading,
+  PageHeader,
+  Segmented,
+  Select,
+  Textarea,
+} from "@/components/ui";
 
 type Form = Record<keyof CompanyProfile, string | boolean | number>;
 
@@ -32,7 +44,7 @@ function CompanyForm({ company, onSaved }: { company: CompanyProfile; onSaved: (
     const body = Object.fromEntries(
       Object.entries(f)
         .filter(([k]) => !["id", "updatedAt", "logoUrl"].includes(k))
-        .map(([k, v]) => [k, typeof v === "string" ? v.trim() || null : v]),
+        .map(([k, v]) => [k, typeof v === "string" ? v.trim() || null : v])
     ) as Form;
     body.defaultCreditDays = Number(f.defaultCreditDays);
     try {
@@ -182,6 +194,27 @@ function BusinessSettings() {
   );
 }
 
+/** Light, dark or the phone's setting; kept on this device (not shared with other users). */
+function ThemeSetting() {
+  // The page is pre-rendered without it ("system"), then reads this device's choice.
+  const theme = useSyncExternalStore(subscribeTheme, getTheme, () => "system" as const);
+  return (
+    <Card className="mb-4 space-y-2 p-4">
+      <h2 className="font-semibold">Theme</h2>
+      <Segmented<ThemeChoice>
+        value={theme}
+        onChange={setTheme}
+        options={[
+          { value: "light", label: "Light" },
+          { value: "dark", label: "Dark" },
+          { value: "system", label: "Phone" },
+        ]}
+      />
+      <p className="text-xs text-muted">Phone follows your phone&apos;s light or dark setting. Only for this device.</p>
+    </Card>
+  );
+}
+
 type Tab = "business" | "users";
 
 function SettingsHome() {
@@ -193,6 +226,7 @@ function SettingsHome() {
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader title="Settings" />
+      <ThemeSetting />
       {isAdmin && (
         <div className="mb-4">
           <Segmented<Tab>

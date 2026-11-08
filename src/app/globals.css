@@ -11,8 +11,28 @@
   --brand-fg: #ffffff;
 }
 
+/*
+ * Dark colours: <html data-theme="dark">, set from Settings → Theme (src/lib/theme.ts).
+ * Before that script runs (or without it), the phone's own setting decides.
+ */
+:root[data-theme="dark"] {
+  --background: #0b0c0e;
+  --foreground: #ededed;
+  --surface: #15171a;
+  --surface-2: #1f2226;
+  --border: #2a2d32;
+  --muted: #9ca3af;
+  --brand: #f59e0b;
+  --brand-fg: #1a1205;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --background: #0b0c0e;
     --foreground: #ededed;
     --surface: #15171a;
@@ -21,8 +41,12 @@
     --muted: #9ca3af;
     --brand: #f59e0b;
     --brand-fg: #1a1205;
+    color-scheme: dark;
   }
 }
+
+/* Tailwind's dark: classes follow the chosen theme, not only the phone's setting. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
   --color-background: var(--background);
