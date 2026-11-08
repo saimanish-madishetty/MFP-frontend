@@ -123,8 +123,9 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
   const balance = Math.round((preview.grandTotal - paid) * 100) / 100;
 
   // Products sold in two units get both boxes (packs + pieces); either can be left blank.
-  const addLine = (productId: number) => {
-    const p = productById.get(productId);
+  // `added`: a size just made with "+ New size", before the product list reloads.
+  const addLine = (productId: number, added?: Product) => {
+    const p = added ?? productById.get(productId);
     if (!p) return;
     const other = otherUnit(p, p.saleUnit);
     setLines((prev) => [...prev, newLine(p, p.saleUnit), ...(other ? [newLine(p, other)] : [])]);

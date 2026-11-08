@@ -62,11 +62,13 @@ export type WastageLine = {
   expected: string | null;
   waste: string | null;
   wastePct: string | null;
+  /** ₹ value of `waste` at the material's latest price; null when not in the recipe or no price */
+  value: string | null;
 };
 
 export type ProductWastage = {
-  /** `made` in sale units, `madeStock` in stock units */
-  days: { date: string; made: string | null; madeStock: string | null; materials: WastageLine[] }[];
+  /** `made` in sale units, `madeStock` in stock units; `wasteValue` in ₹ */
+  days: { date: string; made: string | null; madeStock: string | null; wasteValue: string; materials: WastageLine[] }[];
   totals: WastageLine[];
 };
 

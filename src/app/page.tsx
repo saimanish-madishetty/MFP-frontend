@@ -3,11 +3,12 @@
 import Link from "next/link";
 import useSWR from "swr";
 import { Badge, ErrorBox } from "@/components/ui";
-import { formatDay, formatINR } from "@/lib/format";
+import { formatDay, formatINR, todayIST } from "@/lib/format";
 import { saleStatus, type SaleListItem } from "@/lib/sales";
 import { formatStock, type Pack } from "@/lib/products";
 import { useAuth } from "@/lib/use-auth";
 import { formatQty, type StockOverview, type Unit } from "@/lib/stock";
+import { addUp, type WastageData } from "@/lib/wastage";
 import type { OrdersOverview } from "@/lib/orders";
 
 type SalesOverview = {
@@ -81,6 +82,12 @@ export default function DashboardPage() {
   const { data: products } = useSWR<ProductsOverview>("/products/overview");
   const { data: s } = useSWR<StockOverview>("/stock/overview");
   const { data: orders } = useSWR<OrdersOverview>("/orders/overview");
+  const { data: wastage } = useSWR<WastageData>(`/stock/production/wastage/lines?month=${todayIST().slice(0, 7)}`);
+  // All materials, in ₹: the extra material cost this month.
+  const wasteValue = wastage
+    ? addUp(wastage.lines, new Map(wastage.materials.map((m) => [m.id, m])), { kind: "value" }).amount
+    : 0;
+  const wasteDays = new Set(wastage?.made.map((m) => m.date)).size;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -209,6 +216,13 @@ export default function DashboardPage() {
             href="/stock/?tab=raw"
             tone={s && s.negativeStock.length > 0 ? "red" : undefined}
             hint={[...(s?.negativeStock ?? []), ...(s?.lowStock ?? [])].map((m) => m.name).join(", ") || undefined}
+          />
+          <StatCard
+            label="Wastage this month"
+            value={wastage ? formatINR(Math.max(0, wasteValue)) : "—"}
+            href="/wastage/"
+            tone={wasteValue > 0 ? "red" : undefined}
+            hint={wastage ? `${wasteDays} production day${wasteDays === 1 ? "" : "s"} · by day ›` : undefined}
           />
           <StatCard
             label="Products out of stock"

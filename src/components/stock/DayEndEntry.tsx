@@ -92,9 +92,10 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
   const usedOf = (row: ProductRow, line: MaterialLine) =>
     line.touched ? line.used : String(expected(productById.get(row.productId), line.materialId, madeOf(row)) ?? "");
 
-  const addProduct = (productId: number) =>
+  // `added`: a size just made with "+ New size", before the product list reloads.
+  const addProduct = (productId: number, added?: Product) =>
     edit((x) => {
-      const p = productById.get(productId);
+      const p = added ?? productById.get(productId);
       const recipe = (p?.materials ?? []).filter((m) => m.material.type === "RAW");
       x.products.push({
         productId,
@@ -249,7 +250,12 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
                       <p className="truncate text-sm">{m?.name ?? "?"}</p>
                       <p className="text-xs text-muted">
                         {exp === null ? (
-                          "Not in recipe"
+                          // Nothing made yet, or a material the recipe doesn't list (or has no quantity for).
+                          p?.materials.some((x) => x.materialId === line.materialId && x.qtyPerUnit) ? (
+                            "In recipe"
+                          ) : (
+                            "Not in recipe"
+                          )
                         ) : (
                           <>
                             Recipe {formatQty(exp, m?.unit)}

@@ -7,6 +7,8 @@ import { formatINR } from "@/lib/format";
 import { formatStock, groupProducts, perUnit, sizeLabel, type Product } from "@/lib/products";
 import { searchFilter } from "@/lib/search";
 import { Badge, ButtonLink, Empty, ErrorBox, Input, Loading } from "@/components/ui";
+import { useCanEdit } from "@/lib/use-auth";
+import { QuickSizeSheet } from "./QuickSizeSheet";
 
 /** Searchable product cards with ready stock. Used on the Products page and the Stock → Products tab. */
 export function ProductList() {
@@ -95,7 +97,7 @@ function totalStock(sizes: Product[]): string | null {
 
 /**
  * A product with sizes: a card that opens with the arrow to show a row per size; a size row opens
- * that size. Open while searching, so matching sizes show.
+ * that size, and "+ New size" adds one right there. Open while searching, so matching sizes show.
  */
 function GroupCard({
   name,
@@ -109,6 +111,8 @@ function GroupCard({
   searching: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const canEdit = useCanEdit();
   const shown = open || searching;
   const total = totalStock(sizes);
   const empty = sizes.filter((p) => p.active && Number(p.currentQty) <= 0).length;
@@ -169,7 +173,25 @@ function GroupCard({
               </Link>
             </li>
           ))}
+          {canEdit && sizes[0]?.group && (
+            <li>
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className="w-full rounded-b-xl px-4 py-3 text-left text-sm font-medium text-brand hover:bg-surface-2"
+              >
+                + New size
+              </button>
+            </li>
+          )}
         </ul>
+      )}
+      {adding && sizes[0]?.group && (
+        <QuickSizeSheet
+          group={sizes[0].group}
+          onClose={() => setAdding(false)}
+          onCreated={() => setAdding(false)}
+        />
       )}
     </div>
   );

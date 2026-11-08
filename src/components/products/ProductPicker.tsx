@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { groupProducts, sizeLabel, type Product } from "@/lib/products";
 import { Select } from "@/components/ui";
+import { useCanEdit } from "@/lib/use-auth";
+import { QuickSizeSheet } from "./QuickSizeSheet";
 
 /**
  * "+ Add product…" for sales and production. A product with sizes is listed once; choosing it shows
- * its sizes as buttons to tap. Typing a size in the search ("maida 1.5 500") also finds the product.
+ * its sizes as buttons to tap, plus "+ New size" to add one on the spot. Typing a size in the search
+ * ("maida 1.5 500") also finds the product.
  */
 export function ProductPicker({
   products,
@@ -17,11 +20,14 @@ export function ProductPicker({
   /** The products that can be picked */
   products: Product[];
   placeholder: string;
-  onPick: (productId: number) => void;
+  /** `product` is passed for a size just added with "+ New size" (not in `products` yet). */
+  onPick: (productId: number, product?: Product) => void;
   /** Extra text after a product or size, e.g. its price */
   detail?: (p: Product) => string;
 }) {
   const [groupId, setGroupId] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const canEdit = useCanEdit();
   const listed = groupProducts(products);
   const open = listed.find((l) => l.kind === "group" && l.group.id === groupId);
 
@@ -34,10 +40,8 @@ export function ProductPicker({
           const v = e.target.value;
           if (!v) return;
           if (v.startsWith("g")) {
-            const g = listed.find((l) => l.key === v);
-            // A group with one size left to pick needs no second tap.
-            if (g?.kind === "group" && g.sizes.length === 1) onPick(g.sizes[0].id);
-            else setGroupId(Number(v.slice(1)));
+            // Sizes to tap, even when there's only one: there's also "+ New size".
+            setGroupId(Number(v.slice(1)));
           } else {
             setGroupId(null);
             onPick(Number(v.slice(1)));
@@ -53,9 +57,10 @@ export function ProductPicker({
             </option>
           ) : (
             <option key={l.key} value={l.key}>
-              {l.group.name} · {l.sizes.length} size{l.sizes.length === 1 ? "" : "s"}: {l.sizes.map(sizeLabel).join(", ")}
+              {l.group.name} · {l.sizes.length} size{l.sizes.length === 1 ? "" : "s"}:{" "}
+              {l.sizes.map(sizeLabel).join(", ")}
             </option>
-          ),
+          )
         )}
       </Select>
       {open?.kind === "group" && (
@@ -88,8 +93,28 @@ export function ProductPicker({
                 {detail && <span className="block text-xs text-muted">{detail(p)}</span>}
               </button>
             ))}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className="rounded-lg border border-dashed border-brand/60 px-3 py-2 text-left text-sm font-medium text-brand hover:bg-brand/10"
+              >
+                + New size
+              </button>
+            )}
           </div>
         </div>
+      )}
+      {adding && open?.kind === "group" && (
+        <QuickSizeSheet
+          group={open.group}
+          onClose={() => setAdding(false)}
+          onCreated={(size) => {
+            setAdding(false);
+            setGroupId(null);
+            onPick(size.id, size);
+          }}
+        />
       )}
     </div>
   );

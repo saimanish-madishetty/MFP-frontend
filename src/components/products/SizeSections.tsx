@@ -12,7 +12,8 @@ const SIZE_UNITS = UNITS.filter((u) => ["G", "KG", "ML", "L"].includes(u.value))
 
 /**
  * Packing, Price, Materials used per pack and Ready stock for one product or one size.
- * `cards`: each section in its own card (product form); `tile`: stacked inside a size tile.
+ * `cards`: each section in its own card (product form); `tile`: stacked inside a size tile;
+ * `compact`: the quick "+ New size" sheet, without the explanations and with materials folded away.
  */
 export function SizeSections({
   draft: d,
@@ -25,7 +26,7 @@ export function SizeSections({
   draft: SizeDraft;
   set: (patch: Partial<SizeDraft>) => void;
   materials?: MaterialListItem[];
-  variant: "cards" | "tile";
+  variant: "cards" | "tile" | "compact";
   /** HSN and GST fields, shown with the prices (single product) */
   gst?: React.ReactNode;
   /** Show Ready stock (new products only) */
@@ -33,13 +34,18 @@ export function SizeSections({
 }) {
   const { piecesPerUnit, pack, twoUnits, per, pricePerSaleUnit, derivedPiecePrice } = draftPacking(d);
   const withPieces = d.hasPieces && d.saleUnit !== "PCS";
+  const compact = variant === "compact";
+  /** Field hints and explanations are left out of the compact form. */
+  const hint = (text?: string) => (compact ? undefined : text);
 
   // Plain functions, not components: a component defined here would remount its inputs on every key.
   const section = (children: React.ReactNode) =>
     variant === "cards" ? (
       <Card className="space-y-4 p-4">{children}</Card>
     ) : (
-      <section className="space-y-4 border-t border-border pt-4">{children}</section>
+      <section className={compact ? "space-y-3 border-t border-border pt-3" : "space-y-4 border-t border-border pt-4"}>
+        {children}
+      </section>
     );
   const title = (children: React.ReactNode) =>
     variant === "cards" ? (
@@ -130,13 +136,42 @@ export function SizeSections({
     );
   };
 
+  const materialsBody = (
+    <>
+      <div>
+        {title(`Materials used ${perUnit(d.saleUnit)}`)}
+        {!compact && (
+          <p className="text-xs text-muted">
+            Quantities can be filled in later. Used for cost estimates.
+            {piecesPerUnit !== null && " Choose per piece for things like pouches, per pack for the outer bag."}
+          </p>
+        )}
+      </div>
+      {recipeSection("RAW")}
+      {recipeSection("SUPPLY")}
+      {d.recipe.length > 0 && (
+        <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm">
+          Estimated material cost {perUnit(d.saleUnit)}:{" "}
+          <strong>{formatINR(Math.round(estimate.total * 100) / 100)}</strong>
+          {estimate.missing && <span className="text-muted"> (some quantities or prices missing)</span>}
+          {pricePerSaleUnit !== null && !estimate.missing && (
+            <span className="text-muted">
+              {" "}
+              · margin {formatINR(Math.round((pricePerSaleUnit - estimate.total) * 100) / 100)}
+            </span>
+          )}
+        </p>
+      )}
+    </>
+  );
+
   return (
     <>
       {section(
         <>
           <div>
             {title("Packing")}
-            <p className="text-xs text-muted">How one unit you sell is packed.</p>
+            {!compact && <p className="text-xs text-muted">How one unit you sell is packed.</p>}
           </div>
           <Field label="Sold as">
             <Select value={d.saleUnit} onChange={(e) => set({ saleUnit: e.target.value as Unit })}>
@@ -159,7 +194,7 @@ export function SizeSections({
           )}
           <div className="grid grid-cols-2 gap-4">
             {withPieces && (
-              <Field label={`Pieces per ${unitSingular(d.saleUnit)}`} hint="e.g. 10">
+              <Field label={`Pieces per ${unitSingular(d.saleUnit)}`} hint={hint("e.g. 10")}>
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -173,7 +208,7 @@ export function SizeSections({
             )}
             <Field
               label={withPieces ? "Each piece" : "Size"}
-              hint={withPieces ? "e.g. 500 g" : `Optional, e.g. 25 kg per ${unitSingular(d.saleUnit)}`}
+              hint={hint(withPieces ? "e.g. 500 g" : `Optional, e.g. 25 kg per ${unitSingular(d.saleUnit)}`)}
             >
               <div className="flex gap-2">
                 <Input
@@ -214,7 +249,7 @@ export function SizeSections({
         <>
           <div>
             {title(gst ? "Price & GST" : "Price")}
-            {twoUnits && (
+            {twoUnits && !compact && (
               <p className="text-xs text-muted">
                 Fill one or both. A blank price is worked out from the other, e.g. {perUnit(pack.stockUnit)} ={" "}
                 {perUnit(d.saleUnit)} ÷ {formatQty(per)}.
@@ -266,7 +301,7 @@ export function SizeSections({
                 />
               </Field>
             )}
-            <Field label="MRP (₹)" hint="Optional">
+            <Field label="MRP (₹)" hint={hint("Optional")}>
               <Input
                 type="number"
                 inputMode="decimal"
@@ -281,31 +316,19 @@ export function SizeSections({
         </>
       )}
 
-      {section(
-        <>
-          <div>
-            {title(`Materials used ${perUnit(d.saleUnit)}`)}
-            <p className="text-xs text-muted">
-              Quantities can be filled in later. Used for cost estimates.
-              {piecesPerUnit !== null && " Choose per piece for things like pouches, per pack for the outer bag."}
-            </p>
-          </div>
-          {recipeSection("RAW")}
-          {recipeSection("SUPPLY")}
-          {d.recipe.length > 0 && (
-            <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm">
-              Estimated material cost {perUnit(d.saleUnit)}:{" "}
-              <strong>{formatINR(Math.round(estimate.total * 100) / 100)}</strong>
-              {estimate.missing && <span className="text-muted"> (some quantities or prices missing)</span>}
-              {pricePerSaleUnit !== null && !estimate.missing && (
-                <span className="text-muted">
-                  {" "}
-                  · margin {formatINR(Math.round((pricePerSaleUnit - estimate.total) * 100) / 100)}
-                </span>
-              )}
-            </p>
-          )}
-        </>
+      {compact ? (
+        <details className="border-t border-border pt-3">
+          <summary className="cursor-pointer text-sm font-semibold tracking-wide text-muted uppercase">
+            Materials used {perUnit(d.saleUnit)}
+            <span className="font-normal normal-case">
+              {" "}
+              · {d.recipe.length === 0 ? "none" : `${d.recipe.length} item${d.recipe.length === 1 ? "" : "s"}`}
+            </span>
+          </summary>
+          <div className="mt-3 space-y-4">{materialsBody}</div>
+        </details>
+      ) : (
+        section(materialsBody)
       )}
 
       {opening &&
@@ -313,7 +336,11 @@ export function SizeSections({
           <>
             <div>
               {title("Ready stock")}
-              <p className="text-xs text-muted">Finished {unitShort(d.saleUnit)} you have now. Leave blank if none.</p>
+              {!compact && (
+                <p className="text-xs text-muted">
+                  Finished {unitShort(d.saleUnit)} you have now. Leave blank if none.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Field label={`Quantity (${unitShort(d.saleUnit)})`}>

@@ -15,7 +15,8 @@ import {
   type ProductDetail,
 } from "@/lib/products";
 import { DeleteForever } from "@/components/DeleteForever";
-import { formatQty, unitShort, type ProductWastage, type WastageLine } from "@/lib/stock";
+import { formatQty, unitShort } from "@/lib/stock";
+import { ProductWastageHistory } from "@/components/stock/Wastage";
 import {
   Badge,
   Button,
@@ -153,63 +154,15 @@ function AdjustSheet({ product, onClose }: { product: ProductDetail; onClose: ()
   );
 }
 
-/** "+0.8 kg (4%)" in amber for waste, green when less than the recipe was used. */
-function WasteText({ line }: { line: WastageLine }) {
-  if (line.waste === null) return <span className="text-muted">not in recipe</span>;
-  const w = Number(line.waste);
-  if (w === 0) return <span className="text-muted">as recipe</span>;
-  return (
-    <span className={w > 0 ? "text-amber-600 dark:text-amber-400" : "text-green-700 dark:text-green-400"}>
-      {w > 0 ? "+" : "−"}
-      {formatQty(Math.abs(w), line.material.unit)}
-      {line.wastePct !== null && ` (${Math.abs(Number(line.wastePct))}%)`}
-    </span>
-  );
-}
-
 /** Raw materials used vs. the recipe on each production day (from Add production). */
 function WastageCard({ product }: { product: ProductDetail }) {
-  const { data } = useSWR<ProductWastage>(`/stock/production/wastage?productId=${product.id}`);
-  if (!data || data.days.length === 0) return null;
   return (
     <Card className="p-4">
       <h2 className="font-semibold">Wastage</h2>
-      <p className="mb-2 text-xs text-muted">Raw materials used beyond the recipe, per production day.</p>
-      {data.totals.length > 0 && (
-        <div className="mb-3 rounded-lg bg-surface-2 p-2 text-sm">
-          <p className="mb-1 text-xs text-muted">Last {data.days.length} production days</p>
-          {data.totals.map((t) => (
-            <Row
-              key={t.material.id}
-              label={t.material.name}
-              value={
-                <span>
-                  {formatQty(t.used, t.material.unit)} used · <WasteText line={t} />
-                </span>
-              }
-            />
-          ))}
-        </div>
-      )}
-      <ul className="divide-y divide-border text-sm">
-        {data.days.slice(0, 15).map((day) => (
-          <li key={day.date} className="py-2">
-            <Link href={`/production/?date=${day.date}`} className="font-medium hover:text-brand">
-              {formatDay(day.date)}
-              {day.madeStock && ` · made ${formatStock(product, day.madeStock)}`} ›
-            </Link>
-            {day.materials.map((m) => (
-              <p key={m.material.id} className="flex justify-between gap-2 text-xs text-muted">
-                <span className="truncate">
-                  {m.material.name}: {formatQty(m.used, m.material.unit)}
-                  {m.expected !== null && ` of ${formatQty(m.expected, m.material.unit)}`}
-                </span>
-                <WasteText line={m} />
-              </p>
-            ))}
-          </li>
-        ))}
-      </ul>
+      <p className="mb-2 text-xs text-muted">
+        Raw materials used beyond the recipe, per production day. All products: Wastage in the menu.
+      </p>
+      <ProductWastageHistory product={product} limit={15} />
     </Card>
   );
 }
