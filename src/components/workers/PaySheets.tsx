@@ -11,8 +11,9 @@ const refreshWorkers = (k: unknown) => typeof k === "string" && k.startsWith("/w
 
 export function SettleSheet({ workerId, name, onClose }: { workerId: number; name: string; onClose: () => void }) {
   const { mutate } = useSWRConfig();
+  const [upTo, setUpTo] = useState(todayIST());
   const [paidOn, setPaidOn] = useState(todayIST());
-  const { data: s, error: loadError } = useSWR<PaySummary>(`/workers/${workerId}/settlement-preview?upTo=${paidOn}`);
+  const { data: s, error: loadError } = useSWR<PaySummary>(`/workers/${workerId}/settlement-preview?upTo=${upTo}`);
   const [amount, setAmount] = useState<string | null>(null);
   const [mode, setMode] = useState<PaymentMode>("CASH");
   const [note, setNote] = useState("");
@@ -29,6 +30,7 @@ export function SettleSheet({ workerId, name, onClose }: { workerId: number; nam
     setError(null);
     try {
       await api(`/workers/${workerId}/settlements`, "POST", {
+        upTo,
         paidOn,
         amountPaid: Number(amountValue || 0),
         mode,
@@ -45,9 +47,14 @@ export function SettleSheet({ workerId, name, onClose }: { workerId: number; nam
   return (
     <Sheet open title={`Settle pay · ${name}`} onClose={onClose}>
       <div className="space-y-4">
-        <Field label="Pay up to and including">
-          <Input type="date" max={todayIST()} value={paidOn} onChange={(e) => e.target.value && setPaidOn(e.target.value)} />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Pay up to and including">
+            <Input type="date" max={todayIST()} value={upTo} onChange={(e) => e.target.value && setUpTo(e.target.value)} />
+          </Field>
+          <Field label="Payment date">
+            <Input type="date" max={todayIST()} value={paidOn} onChange={(e) => e.target.value && setPaidOn(e.target.value)} />
+          </Field>
+        </div>
         <ErrorBox error={loadError} />
         {!s && !loadError && <Loading />}
         {s && (

@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { formatINR } from "@/lib/format";
 import { rateLabel, type WorkerWithSummary } from "@/lib/workers";
 import { Badge, ButtonLink, Empty, ErrorBox, Loading } from "@/components/ui";
+import { WorkerGroup } from "./WorkerGroup";
 
 export function PayableAmount({ payable }: { payable: string }) {
   const n = Number(payable);
@@ -33,8 +34,20 @@ export function WorkerList() {
       {isLoading && <Loading />}
       {data?.length === 0 && <Empty>No workers yet. Add your first worker to start marking attendance.</Empty>}
 
-      <ul className="grid gap-2 sm:grid-cols-2">
-        {data?.map((w) => (
+      {data && data.length > 0 &&
+        [
+          { title: "Permanent", workers: data.filter((w) => w.permanent) },
+          { title: "Temporary", workers: data.filter((w) => !w.permanent) },
+        ].map((g) => (
+          <WorkerGroup
+            key={g.title}
+            title={g.title}
+            items={g.workers}
+            fields={(w) => [w.name, w.role, w.phone]}
+            heightClass="max-h-104"
+            listClassName="grid gap-2 sm:grid-cols-2"
+          >
+            {(w) => (
           <li key={w.id}>
             <Link
               href={`/workers/detail/?id=${w.id}`}
@@ -61,8 +74,9 @@ export function WorkerList() {
               </div>
             </Link>
           </li>
+            )}
+          </WorkerGroup>
         ))}
-      </ul>
     </div>
   );
 }

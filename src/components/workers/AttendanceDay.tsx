@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { formatDay, formatINR } from "@/lib/format";
 import { STATUSES, statusLabel, type AttendanceRow, type AttendanceStatus } from "@/lib/workers";
 import { Button, ButtonLink, DateStepper, Empty, ErrorBox, Input, Loading, Sheet } from "@/components/ui";
+import { WorkerGroup } from "./WorkerGroup";
 
 type Edit = { status: AttendanceStatus | null; bonus: string };
 
@@ -96,19 +97,19 @@ export function AttendanceDay({ date, onDateChange }: { date: string; onDateChan
             )}
           </div>
 
-          {/* Rows come sorted permanent-first; show them under two headings. */}
+          {/* Permanent and temporary workers: each with its own search box and scrolling list. */}
           {[
             { title: "Permanent", rows: rows.filter((r) => r.worker.permanent) },
             { title: "Temporary", rows: rows.filter((r) => !r.worker.permanent) },
-          ]
-            .filter((g) => g.rows.length > 0)
-            .map((g) => (
-              <section key={g.title} className="space-y-2">
-                <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">
-                  {g.title} · {g.rows.length}
-                </h2>
-                <ul className="space-y-2">
-                  {g.rows.map((r) => {
+          ].map((g) => (
+              <WorkerGroup
+                key={g.title}
+                title={g.title}
+                items={g.rows}
+                fields={(r) => [r.worker.name]}
+                heightClass="max-h-70"
+              >
+                  {(r) => {
                     const e = current(r);
                     const showBonus = bonusOpen[r.worker.id] || Number(e.bonus) > 0;
                     return (
@@ -177,9 +178,8 @@ export function AttendanceDay({ date, onDateChange }: { date: string; onDateChan
                           ))}
                       </li>
                     );
-                  })}
-                </ul>
-              </section>
+                  }}
+              </WorkerGroup>
             ))}
         </>
       )}
