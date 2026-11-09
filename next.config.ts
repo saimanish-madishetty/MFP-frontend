@@ -6,7 +6,7 @@ import type { NextConfig } from "next";
 function buildInfo() {
   let version = "";
   try {
-    version = /versionNames+"([^"]+)"/.exec(readFileSync("android/app/build.gradle", "utf8"))?.[1] ?? "";
+    version = /versionName\s+"([^"]+)"/.exec(readFileSync("android/app/build.gradle", "utf8"))?.[1] ?? "";
   } catch {}
   let commit = process.env.VERCEL_GIT_COMMIT_SHA ?? "";
   if (!commit) {
