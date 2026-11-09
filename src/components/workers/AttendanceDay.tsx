@@ -3,8 +3,8 @@
 import { useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
-import { formatDay, formatINR } from "@/lib/format";
-import { STATUSES, statusLabel, type AttendanceRow, type AttendanceStatus } from "@/lib/workers";
+import { formatDay, formatINR, todayIST } from "@/lib/format";
+import { STATUSES, dayPay, statusLabel, type AttendanceRow, type AttendanceStatus } from "@/lib/workers";
 import { Button, ButtonLink, DateStepper, Empty, ErrorBox, Input, Loading, Sheet } from "@/components/ui";
 import { WorkerGroup } from "./WorkerGroup";
 
@@ -30,6 +30,11 @@ export function AttendanceDay({ date, onDateChange }: { date: string; onDateChan
   const dirty = rows.filter(isDirty);
   const dirtySettled = dirty.filter((r) => r.settled);
   const markedCount = rows.filter((r) => current(r).status !== null).length;
+  // The day's pay, including changes not saved yet.
+  const payOf = (r: AttendanceRow) => dayPay(r.dayValue, current(r).status, current(r).bonus);
+  const payTotal = (list: AttendanceRow[]) => list.reduce((sum, r) => sum + payOf(r), 0);
+  const total = payTotal(rows);
+  const permanentTotal = payTotal(rows.filter((r) => r.worker.permanent));
 
   const setEdit = (r: AttendanceRow, patch: Partial<Edit>) =>
     setEdits((prev) => ({ ...prev, [r.worker.id]: { ...current(r), ...patch } }));
@@ -95,6 +100,19 @@ export function AttendanceDay({ date, onDateChange }: { date: string; onDateChan
                 Mark rest present
               </Button>
             )}
+          </div>
+
+          <div className="rounded-xl border border-border bg-surface p-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-sm text-muted">{date === todayIST() ? "Today's" : formatDay(date, { year: false }) + ":"} total pay</span>
+              <span className="text-xl font-semibold tabular-nums">{formatINR(total)}</span>
+            </div>
+            <p className="mt-0.5 flex justify-between gap-2 text-xs text-muted">
+              <span>
+                Permanent {formatINR(permanentTotal)} · Temporary {formatINR(total - permanentTotal)}
+              </span>
+              {dirty.length > 0 && <span>incl. unsaved</span>}
+            </p>
           </div>
 
           {/* Permanent and temporary workers: each with its own search box and scrolling list. */}

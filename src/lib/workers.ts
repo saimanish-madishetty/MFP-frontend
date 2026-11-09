@@ -77,7 +77,18 @@ export type AttendanceRow = {
   bonus: string;
   note: string | null;
   settled: boolean;
+  /** One full day's pay (₹): as saved for the day, or the worker's current rate */
+  dayValue?: string;
 };
+
+/** Share of a day's pay for each status (as the backend counts it). */
+export const STATUS_FACTOR: Record<AttendanceStatus, number> = { PRESENT: 1, HALF_DAY: 0.5, ABSENT: 0, PAID_LEAVE: 1 };
+
+/** Pay earned for one day: day's pay × status share + bonus. */
+export function dayPay(dayValue: string | undefined, status: AttendanceStatus | null, bonus: string): number {
+  if (status === null) return 0;
+  return Math.round(Number(dayValue ?? 0) * STATUS_FACTOR[status] * 100) / 100 + Number(bonus || 0);
+}
 
 export type MonthAttendance = {
   month: string;
