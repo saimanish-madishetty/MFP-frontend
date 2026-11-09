@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { ROLE_LABEL, formatPhone, setToken } from "@/lib/auth";
 import { useAuth } from "@/lib/use-auth";
 import { LOGGED_IN_EVENT } from "@/components/AuthGate";
+import { AppVersion } from "@/components/AppVersion";
 import { Badge, Button, ErrorBox, Field, Input, Sheet } from "@/components/ui";
 
 const pinInput = (value: string, set: (v: string) => void, autoFocus = false) => (
@@ -79,28 +80,31 @@ export function AccountPanel() {
   const { user, logout } = useAuth();
   const [sheet, setSheet] = useState(false);
   return (
-    <div className="mt-auto border-t border-border p-3 pb-safe-bottom">
-      <div className="px-3 py-2">
-        <p className="truncate text-sm font-medium">{user.name}</p>
-        <p className="flex items-center gap-2 text-xs text-muted">
-          {formatPhone(user.phone)}
-          <Badge tone={user.role === "ADMIN" ? "brand" : "neutral"}>{ROLE_LABEL[user.role]}</Badge>
-        </p>
+    <div className="mt-auto">
+      <AppVersion />
+      <div className="border-t border-border p-3 pb-safe-bottom">
+        <div className="px-3 py-2">
+          <p className="truncate text-sm font-medium">{user.name}</p>
+          <p className="flex items-center gap-2 text-xs text-muted">
+            {formatPhone(user.phone)}
+            <Badge tone={user.role === "ADMIN" ? "brand" : "neutral"}>{ROLE_LABEL[user.role]}</Badge>
+          </p>
+        </div>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="sm" className="flex-1" onClick={() => setSheet(true)}>
+            Change PIN
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex-1"
+            onClick={() => confirm("Log out of the app on this device?") && logout()}
+          >
+            Log out
+          </Button>
+        </div>
+        {sheet && <ChangePinSheet onClose={() => setSheet(false)} />}
       </div>
-      <div className="flex gap-1">
-        <Button variant="ghost" size="sm" className="flex-1" onClick={() => setSheet(true)}>
-          Change PIN
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="flex-1"
-          onClick={() => confirm("Log out of the app on this device?") && logout()}
-        >
-          Log out
-        </Button>
-      </div>
-      {sheet && <ChangePinSheet onClose={() => setSheet(false)} />}
     </div>
   );
 }
