@@ -255,7 +255,7 @@ function ProductDetailView() {
             <Row
               key={u.unit}
               label={`Price ${perUnit(u.unit)}`}
-              value={u.price ? `${formatINR(u.price)}${u.priceSet ? "" : " (worked out)"}` : "—"}
+              value={u.price ? `${formatINR(u.price)}${u.priceSet ? "" : " (worked out)"}` : "Price at sale"}
             />
           ))}
           {p.mrp && <Row muted label="MRP" value={formatINR(p.mrp)} />}
