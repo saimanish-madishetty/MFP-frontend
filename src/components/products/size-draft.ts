@@ -86,8 +86,7 @@ export function draftBody(d: SizeDraft, withOpening: boolean) {
 export function draftMissing(d: SizeDraft): string[] {
   const missing: string[] = [];
   if (d.hasPieces && d.saleUnit !== "PCS" && !(Number(d.pieces) > 1)) missing.push("pieces per pack");
-  const { pricePerSaleUnit } = draftPacking(d);
-  if (pricePerSaleUnit === null) missing.push("price");
+  // Price is optional: it can be set at sale.
   return missing;
 }
 
@@ -96,7 +95,7 @@ export function draftSummary(d: SizeDraft): string {
   const { pack, pricePerSaleUnit } = draftPacking(d);
   return [
     pack.description,
-    pricePerSaleUnit !== null && `${formatINR(pricePerSaleUnit)} ${perUnit(d.saleUnit)}`,
+    pricePerSaleUnit !== null ? `${formatINR(pricePerSaleUnit)} ${perUnit(d.saleUnit)}` : "price at sale",
     Number(d.openingQty) > 0 && `${formatQty(Number(d.openingQty), d.saleUnit)} ready`,
   ]
     .filter(Boolean)

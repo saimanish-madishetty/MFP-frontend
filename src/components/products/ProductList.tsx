@@ -57,7 +57,7 @@ const prices = (p: Product) =>
   p.pack.units
     .filter((u) => u.priceSet)
     .map((u) => `${formatINR(u.price ?? 0)} ${perUnit(u.unit)}`)
-    .join(" · ");
+    .join(" · ") || "Price at sale";
 
 const stockClass = (p: Product) =>
   `font-semibold tabular-nums ${Number(p.currentQty) <= 0 ? "text-red-600 dark:text-red-400" : ""}`;

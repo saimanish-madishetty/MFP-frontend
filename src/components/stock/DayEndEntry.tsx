@@ -8,7 +8,10 @@ import { formatQty, unitShort, type MaterialListItem, type ProductionDay, type U
 import { Button, ButtonLink, DateStepper, Empty, ErrorBox, Input, Loading, Select, Textarea } from "@/components/ui";
 import { ProductPicker } from "@/components/products/ProductPicker";
 
-/** A raw material used for a product. Untouched lines follow the recipe as the quantity made changes. */
+/**
+ * A raw material or supply used for a product. Untouched lines follow the recipe as the quantity made
+ * changes. Supplies in the recipe (covers, boxes, …) are taken from stock with the product too.
+ */
 type MaterialLine = { materialId: number; used: string; touched: boolean };
 /** `made` is in the sale unit (packs, bags); `extra` in stock units (pieces, kg) on top, for a mix. */
 type ProductRow = { productId: number; made: string; extra: string; materials: MaterialLine[] };
@@ -85,7 +88,20 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
   const materialById = new Map(materials.map((m) => [m.id, m]));
   // Saved quantities, in stock units.
   const savedMade = new Map((day.entry?.products ?? []).map((p) => [p.productId, Number(p.stockQty)]));
-  const savedItems = (id: number) => Number(saved.items[id] ?? 0);
+  /** All of a material used on the day: day totals + every product's line. */
+  const usedTotal = (x: Draft, saved: boolean, id: number) =>
+    Number(x.items[id] || 0) +
+    x.products.reduce(
+      (sum, r) =>
+        sum +
+        r.materials
+          .filter((l) => l.materialId === id)
+          .reduce((t, l) => t + Number((saved ? l.used : usedOf(r, l)) || 0), 0),
+      0,
+    );
+  /** Stock left of a material after this day, as entered (current stock already has the saved day taken out). */
+  const leftAfter = (id: number) =>
+    Number(materialById.get(id)?.currentQty ?? 0) + usedTotal(saved, true, id) - usedTotal(d, false, id);
   const madeOf = (row: ProductRow) => stockMade(productById.get(row.productId), row);
 
   /** Quantity a line counts as used: what was typed, or the recipe amount if untouched. */
@@ -96,7 +112,8 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
   const addProduct = (productId: number, added?: Product) =>
     edit((x) => {
       const p = added ?? productById.get(productId);
-      const recipe = (p?.materials ?? []).filter((m) => m.material.type === "RAW");
+      // Raw materials first, then supplies.
+      const recipe = [...(p?.materials ?? [])].sort((a, b) => a.material.type.localeCompare(b.material.type));
       x.products.push({
         productId,
         made: "",
@@ -152,6 +169,9 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
 
   const addable = products.filter((p) => p.active && rowIdx(p.id) === -1);
   const rawMaterials = materials.filter((m) => m.type === "RAW" && m.active);
+  const activeMaterials = materials
+    .filter((m) => m.active)
+    .sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
   // Supplies, plus any other material already entered for the day.
   const general = materials
     .filter((m) => (m.type === "SUPPLY" && m.active) || d.items[m.id] !== undefined)
@@ -235,11 +255,20 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
             </div>
 
             <div className="space-y-1.5 rounded-lg bg-surface-2/50 p-2">
-              <p className="text-xs font-medium tracking-wide text-muted uppercase">Raw materials used</p>
               {row.materials.length === 0 && (
-                <p className="text-xs text-muted">None. Add the raw materials used, or fill in the product&apos;s recipe.</p>
+                <p className="text-xs text-muted">
+                  No materials. Add the raw materials and supplies used, or fill in the product&apos;s recipe.
+                </p>
               )}
-              {row.materials.map((line) => {
+              {(["RAW", "SUPPLY"] as const).map((type) => {
+                const lines = row.materials.filter((l) => (materialById.get(l.materialId)?.type ?? "RAW") === type);
+                if (lines.length === 0) return null;
+                return (
+                  <div key={type} className="space-y-1.5">
+                    <p className="text-xs font-medium tracking-wide text-muted uppercase">
+                      {type === "RAW" ? "Raw materials used" : "Supplies used"}
+                    </p>
+              {lines.map((line) => {
                 const m = materialById.get(line.materialId);
                 const used = usedOf(row, line);
                 const exp = expected(p, line.materialId, made);
@@ -273,6 +302,11 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
                           </>
                         )}
                       </p>
+                      {type === "SUPPLY" && Number(used) > 0 && (
+                        <p className={`text-xs ${leftAfter(line.materialId) < 0 ? "text-red-600 dark:text-red-400" : "text-muted"}`}>
+                          Left after: {formatQty(leftAfter(line.materialId), m?.unit)}
+                        </p>
+                      )}
                     </div>
                     <Input
                       type="number"
@@ -305,8 +339,11 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
                   </div>
                 );
               })}
+                  </div>
+                );
+              })}
               <div className="flex flex-wrap items-center gap-2">
-                {rawMaterials.some((m) => !lineIds.has(m.id)) && (
+                {activeMaterials.some((m) => !lineIds.has(m.id)) && (
                   <Select
                     value=""
                     className="min-w-0 flex-1"
@@ -317,12 +354,13 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
                       )
                     }
                   >
-                    <option value="">+ Add raw material…</option>
-                    {rawMaterials
+                    <option value="">+ Add material or supply…</option>
+                    {activeMaterials
                       .filter((m) => !lineIds.has(m.id))
                       .map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.name}
+                          {m.type === "SUPPLY" ? " (supply)" : ""}
                         </option>
                       ))}
                   </Select>
@@ -360,20 +398,20 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
       {(general.length > 0 || otherRaw.length > 0) && (
         <div className="rounded-xl border border-border bg-surface">
           <p className="bg-surface-2/60 px-3 py-1.5 text-xs font-medium tracking-wide text-muted uppercase">
-            Supplies & other materials used today
+            Other supplies & materials used today (not for one product)
           </p>
           <ul className="divide-y divide-border">
             {general.map((m) => {
               const v = d.items[m.id] ?? "";
-              // Current stock already has this day's saved usage taken out.
-              const before = Number(m.currentQty) + savedItems(m.id);
-              const after = before - Number(v || 0);
+              // Stock before this day's entry, and after everything entered for the day (products too).
+              const before = Number(m.currentQty) + usedTotal(saved, true, m.id);
+              const after = leftAfter(m.id);
               return (
                 <li key={m.id} className="flex items-center gap-3 px-3 py-2.5">
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{m.name}</p>
                     <p className={`text-xs ${after < 0 ? "text-red-600 dark:text-red-400" : "text-muted"}`}>
-                      {Number(v) > 0 ? `Left after: ${formatQty(after, m.unit)}` : `In stock: ${formatQty(before, m.unit)}`}
+                      {after !== before ? `Left after: ${formatQty(after, m.unit)}` : `In stock: ${formatQty(before, m.unit)}`}
                     </p>
                   </div>
                   <Input

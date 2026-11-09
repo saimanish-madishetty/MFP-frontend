@@ -65,7 +65,7 @@ function GroupView() {
                     {p.pack.units
                       .filter((u) => u.priceSet)
                       .map((u) => `${formatINR(u.price ?? 0)} ${perUnit(u.unit)}`)
-                      .join(" · ")}
+                      .join(" · ") || "Price at sale"}
                   </span>
                 </span>
                 <span

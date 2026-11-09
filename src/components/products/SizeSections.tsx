@@ -262,7 +262,7 @@ export function SizeSections({
               hint={
                 twoUnits && d.price === "" && pricePerSaleUnit !== null
                   ? `Blank = ${formatINR(pricePerSaleUnit)} (from ${perUnit(pack.stockUnit)} price)`
-                  : undefined
+                  : hint("Optional: blank = set the price at sale")
               }
             >
               <Input
@@ -270,7 +270,6 @@ export function SizeSections({
                 inputMode="decimal"
                 min={0}
                 step="0.01"
-                required={!twoUnits || d.piecePrice === ""}
                 placeholder={
                   twoUnits && pricePerSaleUnit !== null && d.price === "" ? String(pricePerSaleUnit) : undefined
                 }
@@ -292,7 +291,6 @@ export function SizeSections({
                   inputMode="decimal"
                   min={0}
                   step="0.01"
-                  required={d.price === ""}
                   placeholder={
                     derivedPiecePrice !== null && d.piecePrice === "" ? String(derivedPiecePrice) : undefined
                   }

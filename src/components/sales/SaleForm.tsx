@@ -297,7 +297,10 @@ export function SaleForm({ sale, initialBuyerId }: { sale?: SaleDetail; initialB
           products={products.filter((p) => p.active)}
           placeholder="+ Add product…"
           onPick={addLine}
-          detail={(p) => `${formatINR(priceFor(p, p.saleUnit) ?? 0)} ${perUnit(p.saleUnit)}`}
+          detail={(p) => {
+            const price = priceFor(p, p.saleUnit);
+            return price === null ? "Price at sale" : `${formatINR(price)} ${perUnit(p.saleUnit)}`;
+          }}
         />
         {products.length === 0 && (
           <p className="text-sm text-muted">
