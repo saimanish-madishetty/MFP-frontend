@@ -26,15 +26,16 @@ export function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** "Sat, 24 Oct 2026" */
+const SHORT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * Every date in the app is shown as DD/MM/YY: "Sat, 24/10/26", or "24/10/26" with `weekday: false`.
+ * The year is always shown (`year` is kept so older calls still compile).
+ */
 export function formatDay(date: string, opts: { weekday?: boolean; year?: boolean } = {}): string {
-  return toUTC(date).toLocaleDateString("en-IN", {
-    timeZone: "UTC",
-    weekday: opts.weekday === false ? undefined : "short",
-    day: "numeric",
-    month: "short",
-    year: opts.year === false ? undefined : "numeric",
-  });
+  const [y, m, d] = ymd(date).split("-");
+  const day = `${d}/${m}/${y.slice(2)}`;
+  return opts.weekday === false ? day : `${SHORT_WEEKDAYS[toUTC(date).getUTCDay()]}, ${day}`;
 }
 
 /** "October 2026" for "2026-10" */
