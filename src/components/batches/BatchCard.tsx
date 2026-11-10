@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ago, daysBetween, STATUS_LABEL, type BatchListItem } from "@/lib/batches";
 import { formatDay, todayIST } from "@/lib/format";
 import { formatStock, type Product } from "@/lib/products";
+import { formatQty } from "@/lib/stock";
 import { Badge } from "@/components/ui";
 
 /** Dots for the stages: filled up to the one reached. */
@@ -55,6 +56,11 @@ export function BatchCard({ batch: b, productById }: { batch: BatchListItem; pro
         )}
       </div>
       {b.status === "OPEN" && <StageDots total={b.stages.length} reached={b.stage} />}
+      {b.materials.length > 0 && (
+        <p className="text-xs text-muted">
+          {b.materials.map((m) => `${m.name} ${formatQty(m.quantity, m.unit)}`).join(" · ")}
+        </p>
+      )}
       {b.products.length > 0 && (
         <p className="text-xs text-muted">
           {b.products

@@ -27,6 +27,8 @@ export type BatchListItem = {
   /** When the current stage was reached */
   stageDate: string;
   materialsLost: boolean | null;
+  /** Raw materials put in at the start */
+  materials: { materialId: number; name: string; unit: Unit; quantity: string }[];
   products: { productId: number; stockQty: string }[];
 };
 
