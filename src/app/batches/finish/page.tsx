@@ -10,6 +10,8 @@ import { sizeLabel, unitFactor, type Product } from "@/lib/products";
 import { formatQty, unitShort, type MaterialListItem, type Unit } from "@/lib/stock";
 import { ProductPicker } from "@/components/products/ProductPicker";
 import { ProductMultiSelect } from "@/components/batches/ProductMultiSelect";
+import { floorWhole, useWholeSupplies } from "@/lib/whole-supplies";
+import { WholeNumbersToggle } from "@/components/stock/WholeNumbersToggle";
 import { Button, DateStepper, ErrorBox, Loading, PageHeader, Select, Textarea, Input } from "@/components/ui";
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -49,6 +51,7 @@ function FinishBatch() {
   const [extraIds, setExtraIds] = useState<number[]>([]);
   const [supplies, setSupplies] = useState<Record<number, Supply>>({});
   const [notes, setNotes] = useState<string | null>(null);
+  const [whole, setWhole] = useWholeSupplies();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<unknown>(null);
 
@@ -89,7 +92,10 @@ function FinishBatch() {
   const supplyIds = [...new Set([...recipeSupplyIds, ...Object.keys(supplies).map(Number)])];
   const qtyOf = (mid: number) => {
     const s = supplies[mid];
-    return s?.touched ? s.qty : String(recipeFor(mid) ?? "");
+    if (s?.touched) return s.qty;
+    const exp = recipeFor(mid);
+    if (exp === null) return "";
+    return String(whole && materialById.get(mid)?.type === "SUPPLY" ? floorWhole(exp) : exp);
   };
   const addable = materials
     .filter((m) => m.active && !supplyIds.includes(m.id))
@@ -232,9 +238,10 @@ function FinishBatch() {
       )}
 
       <div className="rounded-xl border border-border bg-surface">
-        <p className="bg-surface-2/60 px-3 py-1.5 text-xs font-medium tracking-wide text-muted uppercase">
-          Packing supplies used
-        </p>
+        <div className="flex items-center justify-between gap-3 bg-surface-2/60 px-3 py-1.5">
+          <p className="text-xs font-medium tracking-wide text-muted uppercase">Packing supplies used</p>
+          <WholeNumbersToggle on={whole} onChange={setWhole} />
+        </div>
         {supplyIds.length === 0 && (
           <p className="px-3 py-2 text-sm text-muted">Enter what was made: the supplies in its recipe appear here.</p>
         )}

@@ -8,6 +8,8 @@ import { formatStock, sizeLabel, unitFactor, type Product } from "@/lib/products
 import { formatQty, unitShort, type MaterialListItem, type ProductionDay, type Unit } from "@/lib/stock";
 import { Button, ButtonLink, DateStepper, Empty, ErrorBox, Input, Loading, Select, Textarea } from "@/components/ui";
 import { ProductPicker } from "@/components/products/ProductPicker";
+import { floorWhole, useWholeSupplies } from "@/lib/whole-supplies";
+import { WholeNumbersToggle } from "./WholeNumbersToggle";
 
 /**
  * A raw material or supply used for a product. Untouched lines follow the recipe as the quantity made
@@ -74,6 +76,7 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<unknown>(null);
   const [justSaved, setJustSaved] = useState(false);
+  const [whole, setWhole] = useWholeSupplies();
 
   if (dayError || matError) return <ErrorBox error={dayError ?? matError} />;
   if (!day || !materials || !products) return <Loading />;
@@ -106,8 +109,13 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
   const madeOf = (row: ProductRow) => stockMade(productById.get(row.productId), row);
 
   /** Quantity a line counts as used: what was typed, or the recipe amount if untouched. */
-  const usedOf = (row: ProductRow, line: MaterialLine) =>
-    line.touched ? line.used : String(expected(productById.get(row.productId), line.materialId, madeOf(row)) ?? "");
+  const usedOf = (row: ProductRow, line: MaterialLine) => {
+    if (line.touched) return line.used;
+    const exp = expected(productById.get(row.productId), line.materialId, madeOf(row));
+    if (exp === null) return "";
+    // Supplies (covers, boxes) in whole numbers: fractions rounded down.
+    return String(whole && materialById.get(line.materialId)?.type === "SUPPLY" ? floorWhole(exp) : exp);
+  };
 
   // `added`: a size just made with "+ New size", before the product list reloads.
   const addProduct = (productId: number, added?: Product) =>
@@ -305,9 +313,12 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
                 if (lines.length === 0) return null;
                 return (
                   <div key={type} className="space-y-1.5">
-                    <p className="text-xs font-medium tracking-wide text-muted uppercase">
-                      {type === "RAW" ? "Raw materials used" : "Supplies used"}
-                    </p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-medium tracking-wide text-muted uppercase">
+                        {type === "RAW" ? "Raw materials used" : "Supplies used"}
+                      </p>
+                      {type === "SUPPLY" && <WholeNumbersToggle on={whole} onChange={setWhole} />}
+                    </div>
               {lines.map((line) => {
                 const m = materialById.get(line.materialId);
                 const used = usedOf(row, line);
