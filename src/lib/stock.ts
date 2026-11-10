@@ -33,6 +33,14 @@ export type MaterialDetail = Material & { movements: StockMovement[] };
 
 export type ProductionDay = {
   date: string;
+  /** Packs made from batches that day (entered on the batch) */
+  batches: {
+    batchId: number;
+    number: string;
+    plan: string;
+    products: { productId: number; stockQty: string }[];
+    supplies: { materialId: number; quantity: string }[];
+  }[];
   entry: {
     id: number;
     notes: string | null;

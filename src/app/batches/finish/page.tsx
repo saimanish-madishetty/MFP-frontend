@@ -62,10 +62,19 @@ function FinishBatch() {
   const outputs = shown.map((p) => ({ p, stock: stockOf(p, made[p.id]) })).filter((o) => o.stock > 0);
 
   /** What the recipes say the packs entered should take of a material (null: in no recipe). */
-  const recipeFor = (materialId: number) => {
-    const parts = outputs.map((o) => expected(o.p, materialId, o.stock)).filter((x): x is number => x !== null);
+  const recipeFor = (materialId: number, list = outputs) => {
+    const parts = list.map((o) => expected(o.p, materialId, o.stock)).filter((x): x is number => x !== null);
     return parts.length ? round3(parts.reduce((t, x) => t + x, 0)) : null;
   };
+  // Packed earlier from this batch, plus what's entered now: compared with the raw materials put in.
+  const allMade = [
+    ...b.products.flatMap((m) => {
+      const p = productById.get(m.productId);
+      return p ? [{ p, stock: Number(m.stockQty) }] : [];
+    }),
+    ...outputs,
+  ];
+  const packed = b.packings.length > 0;
   // Supplies: those in the recipes of what was made, plus any added by hand.
   const recipeSupplyIds = new Set(
     outputs.flatMap((o) => o.p.materials.filter((m) => m.material.type === "SUPPLY" && m.qtyPerUnit).map((m) => m.materialId)),
@@ -78,21 +87,28 @@ function FinishBatch() {
   const addable = materials
     .filter((m) => m.active && !supplyIds.includes(m.id))
     .sort((a, c) => c.type.localeCompare(a.type) || a.name.localeCompare(c.name));
-  const put = b.materials.filter((m) => !m.atFinish);
+  const put = b.materials.filter((m) => m.packingId === null);
 
-  const save = async () => {
-    if (outputs.length === 0) return setSaveError(new Error("Enter what was made"));
+  /** `finish`: also closes the batch (with nothing new entered, if it was packed before). */
+  const save = async (finish: boolean) => {
+    if (outputs.length === 0 && !(finish && packed)) return setSaveError(new Error("Enter what was made"));
     setSaving(true);
     setSaveError(null);
+    const entry = {
+      date,
+      products: outputs.map((o) => ({ productId: o.p.id, stockQty: o.stock })),
+      supplies: supplyIds
+        .map((mid) => ({ materialId: mid, quantity: Number(qtyOf(mid)) || 0 }))
+        .filter((s) => s.quantity > 0),
+    };
     try {
-      await api(`/batches/${b.id}/finish`, "POST", {
-        date,
-        products: outputs.map((o) => ({ productId: o.p.id, stockQty: o.stock })),
-        supplies: supplyIds
-          .map((mid) => ({ materialId: mid, quantity: Number(qtyOf(mid)) || 0 }))
-          .filter((s) => s.quantity > 0),
-        ...(notes !== null && { notes: notes.trim() }),
-      });
+      if (finish)
+        await api(`/batches/${b.id}/finish`, "POST", {
+          ...entry,
+          ...(outputs.length === 0 && { supplies: [] }),
+          ...(notes !== null && { notes: notes.trim() }),
+        });
+      else await api(`/batches/${b.id}/packings`, "POST", entry);
       mutate(
         (k) => typeof k === "string" && ["/batch", "/materials", "/stock", "/products"].some((p) => k.startsWith(p)),
       );
@@ -124,7 +140,12 @@ function FinishBatch() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 pb-24">
-      <PageHeader title="Finish batch" back={`/batches/detail/?id=${b.id}`} subtitle={`${b.plan.name} · ${b.number}`} />
+      <PageHeader title="Packing" back={`/batches/detail/?id=${b.id}`} subtitle={`${b.plan.name} · ${b.number}`} />
+      {packed && (
+        <p className="-mt-2 text-sm text-muted">
+          Packed before: {b.packings.length} time{b.packings.length === 1 ? "" : "s"}. Enter only what was packed now.
+        </p>
+      )}
 
       <div className="space-y-1">
         <p className="text-sm font-medium">Packed on</p>
@@ -132,7 +153,7 @@ function FinishBatch() {
       </div>
 
       <div className="space-y-2">
-        <p className="text-sm font-medium">What was made</p>
+        <p className="text-sm font-medium">Packs made now</p>
         {shown.length === 0 && (
           <p className="text-sm text-muted">No products in the plan &ldquo;{b.plan.name}&rdquo; yet: add them below.</p>
         )}
@@ -161,11 +182,11 @@ function FinishBatch() {
       {put.length > 0 && (
         <div className="rounded-xl border border-border bg-surface">
           <p className="bg-surface-2/60 px-3 py-1.5 text-xs font-medium tracking-wide text-muted uppercase">
-            Raw materials: put in vs. recipe
+            Raw materials: put in vs. recipe{packed ? " (all packings)" : ""}
           </p>
           <ul className="divide-y divide-border text-sm">
             {put.map((m) => {
-              const exp = recipeFor(m.materialId);
+              const exp = recipeFor(m.materialId, allMade);
               const waste = exp === null ? null : round3(Number(m.quantity) - exp);
               return (
                 <li key={m.materialId} className="flex items-baseline justify-between gap-3 px-3 py-2">
@@ -263,12 +284,15 @@ function FinishBatch() {
 
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-4 pt-3 pb-safe-bottom backdrop-blur md:left-60">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
-          <div className="flex-1 text-sm">
+          <div className="min-w-0 flex-1 text-sm">
             <ErrorBox error={saveError} />
-            {!saveError && (outputs.length ? "Products go into stock on the packed day" : "Enter what was made")}
+            {!saveError && <span className="hidden sm:inline">{outputs.length ? "Packs go into stock on this day" : "Enter what was packed"}</span>}
           </div>
-          <Button size="lg" onClick={save} disabled={saving || outputs.length === 0}>
-            {saving ? "Saving…" : "Finish batch"}
+          <Button variant="secondary" onClick={() => save(false)} disabled={saving || outputs.length === 0}>
+            Save, keep open
+          </Button>
+          <Button onClick={() => save(true)} disabled={saving || (outputs.length === 0 && !packed)}>
+            {saving ? "Saving…" : outputs.length ? "Save & finish" : "Finish batch"}
           </Button>
         </div>
       </div>

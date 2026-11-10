@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
@@ -200,12 +201,51 @@ export function DayEndEntry({ date, onDateChange }: { date: string; onDateChange
       <DateStepper date={date} onChange={onDateChange} />
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="text-muted">
-          {d.products.length === 0 && !day.entry
+          {d.products.length === 0 && !day.entry && day.batches.length === 0
             ? "Not entered yet"
             : `${d.products.length} product${d.products.length === 1 ? "" : "s"}`}
         </span>
         {justSaved && !dirty && <span className="text-green-600 dark:text-green-400">Saved ✓</span>}
       </div>
+
+      {/* Packed from batches this day: entered on the batch, shown here so the day is complete */}
+      {day.batches.length > 0 && (
+        <div className="rounded-xl border border-border bg-surface">
+          <p className="bg-surface-2/60 px-3 py-1.5 text-xs font-medium tracking-wide text-muted uppercase">
+            Packed from batches
+          </p>
+          <ul className="divide-y divide-border text-sm">
+            {day.batches.map((b, i) => (
+              <li key={i}>
+                <Link href={`/batches/detail/?id=${b.batchId}`} className="block px-3 py-2 hover:text-brand">
+                  <p className="font-medium">
+                    {b.plan} <span className="font-normal text-muted">· {b.number} ›</span>
+                  </p>
+                  {b.products.map((m) => {
+                    const p = productById.get(m.productId);
+                    return (
+                      <p key={m.productId} className="flex justify-between gap-3">
+                        <span className="truncate">{p?.internalName ?? "…"}</span>
+                        <span className="shrink-0 tabular-nums">{p ? formatStock(p, m.stockQty) : m.stockQty}</span>
+                      </p>
+                    );
+                  })}
+                  {b.supplies.length > 0 && (
+                    <p className="text-xs text-muted">
+                      {b.supplies
+                        .map((s) => {
+                          const m = materialById.get(s.materialId);
+                          return `${m?.name ?? "?"} ${formatQty(s.quantity, m?.unit)}`;
+                        })
+                        .join(" · ")}
+                    </p>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Products made, each with the raw materials used for it */}
       {d.products.map((row) => {

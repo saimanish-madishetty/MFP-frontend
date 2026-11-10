@@ -41,10 +41,17 @@ export type BatchDetail = {
   endDate: string | null;
   materialsLost: boolean | null;
   notes: string | null;
-  /** Raw materials put in at the start (`atFinish` false) and supplies used when finishing */
-  materials: { materialId: number; name: string; type: MaterialType; unit: Unit; quantity: string; atFinish: boolean }[];
-  /** Made: `quantity` in sale units, `stockQty` in stock units */
+  /** Raw materials put in at the start (`packingId` null) and supplies used for each packing */
+  materials: { materialId: number; name: string; type: MaterialType; unit: Unit; quantity: string; packingId: number | null }[];
+  /** Made in all: `quantity` in sale units, `stockQty` in stock units */
   products: { productId: number; quantity: string; stockQty: string }[];
+  /** Packs made on each day (a batch can be packed in parts), with the supplies used */
+  packings: {
+    id: number;
+    date: string;
+    products: { productId: number; stockQty: string }[];
+    supplies: { materialId: number; name: string; unit: Unit; quantity: string }[];
+  }[];
   wastage: (WastageLine & { material: { type: MaterialType } })[];
   /** ₹ at the materials' latest prices */
   cost: { materials: string; incomplete: boolean; waste: string };

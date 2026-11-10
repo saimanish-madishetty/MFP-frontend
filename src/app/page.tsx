@@ -99,6 +99,35 @@ export default function DashboardPage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <h1 className="text-2xl font-semibold">Dashboard</h1>
 
+      {/* Batches in process, side by side: swipe for more. Several can run at once. */}
+      <section className="space-y-2">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-medium text-muted">
+            Batches in process{batches && batches.length > 0 ? ` (${batches.length})` : ""}
+          </h2>
+          <Link href="/batches/" className="text-xs text-brand">
+            All batches ›
+          </Link>
+        </div>
+        <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+          {batches?.map((b) => (
+            <div key={b.id} className="w-64 shrink-0">
+              <BatchCard batch={b} productById={new Map((allProducts ?? []).map((p) => [p.id, p]))} />
+            </div>
+          ))}
+          {canEdit && (
+            <Link
+              href="/batches/new/"
+              className="flex w-36 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border bg-surface p-3 text-sm font-medium text-brand hover:border-brand"
+            >
+              <span className="text-xl">+</span>
+              Start batch
+            </Link>
+          )}
+          {batches?.length === 0 && !canEdit && <p className="text-sm text-muted">None in process.</p>}
+        </div>
+      </section>
+
       {/* Hot keys: the actions used most often. */}
       <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
         {QUICK_ACTIONS.filter((a) => canEdit || ("readOnly" in a && a.readOnly)).map((a) => (
@@ -201,28 +230,6 @@ export default function DashboardPage() {
               );
             })}
           </ul>
-        )}
-      </Section>
-
-      <Section title="Batches in process">
-        {batches && batches.length > 0 ? (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {batches.slice(0, 4).map((b) => (
-              <BatchCard key={b.id} batch={b} productById={new Map((allProducts ?? []).map((p) => [p.id, p]))} />
-            ))}
-            {batches.length > 4 && (
-              <Link href="/batches/" className="py-1 text-sm text-brand">
-                All {batches.length} batches ›
-              </Link>
-            )}
-          </div>
-        ) : (
-          <Link
-            href={canEdit ? "/batches/new/" : "/batches/"}
-            className="block rounded-xl border border-dashed border-border bg-surface p-4 text-sm text-muted hover:border-brand"
-          >
-            {batches ? "None in process." : "—"} {canEdit && <span className="text-brand">Start batch ›</span>}
-          </Link>
         )}
       </Section>
 

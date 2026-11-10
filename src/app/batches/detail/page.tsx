@@ -57,8 +57,8 @@ function BatchView() {
   const open = b.status === "OPEN";
   const last = b.stage === b.stages.length - 1;
   const next = b.stages[b.stage + 1]?.name;
-  const put = b.materials.filter((m) => !m.atFinish);
-  const supplies = b.materials.filter((m) => m.atFinish);
+  const put = b.materials.filter((m) => m.packingId === null);
+  const packed = b.packings.length > 0;
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -129,7 +129,7 @@ function BatchView() {
           <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
             {!last && <Button onClick={() => openSheet("stage")}>Move to {next} ›</Button>}
             <ButtonLink href={`/batches/finish/?id=${b.id}`} variant={last ? "primary" : "secondary"}>
-              Finish batch (packed)
+              {packed ? "Pack more / finish" : "Enter packing"}
             </ButtonLink>
             {b.stage > 0 && (
               <Button
@@ -158,27 +158,65 @@ function BatchView() {
         )}
       </Section>
 
-      {b.status === "FINISHED" && (
+      {packed && (
         <>
-          <Section title="Made">
-            {b.products.map((m) => {
-              const p = productById.get(m.productId);
-              return (
-                <Row
-                  key={m.productId}
-                  label={p?.internalName ?? "…"}
-                  value={p ? formatStock(p, m.stockQty) : formatQty(m.quantity)}
-                />
-              );
-            })}
-          </Section>
-          {supplies.length > 0 && (
-            <Section title="Packing supplies used">
-              {supplies.map((m) => (
-                <Row key={m.materialId} label={m.name} value={formatQty(m.quantity, m.unit)} />
+          <Section title={b.packings.length === 1 ? "Packed" : `Packed (${b.packings.length} times)`}>
+            <ul className="divide-y divide-border">
+              {b.packings.map((pk) => (
+                <li key={pk.id} className="py-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-muted">{formatDay(pk.date)}</p>
+                    {open && canEdit && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className="rounded px-1 text-xs text-red-600 hover:bg-surface-2 dark:text-red-400"
+                        onClick={() =>
+                          confirm("Remove this packing? Its packs and supplies are taken back out of stock.") &&
+                          act(() => api(`/batches/${b.id}/packings/${pk.id}`, "DELETE"))
+                        }
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  {pk.products.map((m) => {
+                    const p = productById.get(m.productId);
+                    return (
+                      <Row
+                        key={m.productId}
+                        label={p?.internalName ?? "…"}
+                        value={p ? formatStock(p, m.stockQty) : formatQty(m.stockQty)}
+                      />
+                    );
+                  })}
+                  {pk.supplies.length > 0 && (
+                    <p className="text-xs text-muted">
+                      {pk.supplies.map((m) => `${m.name} ${formatQty(m.quantity, m.unit)}`).join(" · ")}
+                    </p>
+                  )}
+                </li>
               ))}
+            </ul>
+          </Section>
+          {b.packings.length > 1 && (
+            <Section title="Made in all">
+              {b.products.map((m) => {
+                const p = productById.get(m.productId);
+                return (
+                  <Row
+                    key={m.productId}
+                    label={p?.internalName ?? "…"}
+                    value={p ? formatStock(p, m.stockQty) : formatQty(m.quantity)}
+                  />
+                );
+              })}
             </Section>
           )}
+          {open ? (
+            <p className="px-1 text-xs text-muted">Wastage and cost are worked out when the batch is finished.</p>
+          ) : (
+          <>
           <Section title="Wastage (used vs. recipe)">
             {b.wastage.map((w) => {
               const waste = w.waste === null ? null : Number(w.waste);
@@ -225,6 +263,8 @@ function BatchView() {
               At the materials&apos; latest prices{b.cost.incomplete && "; some materials have no price yet"}.
             </p>
           </Section>
+          </>
+          )}
         </>
       )}
 
@@ -240,7 +280,7 @@ function BatchView() {
         </Section>
       )}
 
-      {canEdit && open && (
+      {canEdit && open && !packed && (
         <Button variant="ghost" className="text-red-600 dark:text-red-400" onClick={() => openSheet("cancel")}>
           Cancel batch…
         </Button>
@@ -251,7 +291,7 @@ function BatchView() {
             variant="secondary"
             disabled={busy}
             onClick={() =>
-              confirm("Reopen this batch? What it made and the supplies used are taken back out of stock.") &&
+              confirm("Reopen this batch to pack more or correct a packing? What was packed stays in stock.") &&
               act(() => api(`/batches/${b.id}/reopen`, "POST"))
             }
           >

@@ -25,7 +25,7 @@ export function BatchStartForm({ batch }: { batch?: BatchDetail }) {
   const [date, setDate] = useState(batch?.startDate ?? todayIST());
   const [lines, setLines] = useState<Line[] | null>(
     batch
-      ? batch.materials.filter((m) => !m.atFinish).map((m) => ({ materialId: m.materialId, qty: String(Number(m.quantity)) }))
+      ? batch.materials.filter((m) => m.packingId === null).map((m) => ({ materialId: m.materialId, qty: String(Number(m.quantity)) }))
       : null,
   );
   const [notes, setNotes] = useState(batch?.notes ?? "");
@@ -51,7 +51,7 @@ export function BatchStartForm({ batch }: { batch?: BatchDetail }) {
   const raw = (id: number) => materialById.get(id)?.type === "RAW" && materialById.get(id)?.active;
   // A new batch starts with the raw materials of the plan's last batch.
   const rows = lines ?? (plan?.lastMaterialIds ?? []).filter(raw).map((id) => ({ materialId: id, qty: "" }));
-  const savedQty = (id: number) => Number(batch?.materials.find((m) => !m.atFinish && m.materialId === id)?.quantity ?? 0);
+  const savedQty = (id: number) => Number(batch?.materials.find((m) => m.packingId === null && m.materialId === id)?.quantity ?? 0);
   const addable = materials.filter((m) => m.type === "RAW" && m.active && !rows.some((r) => r.materialId === m.id));
   const set = (fn: (r: Line[]) => Line[]) => setLines(fn(rows.map((r) => ({ ...r }))));
 
