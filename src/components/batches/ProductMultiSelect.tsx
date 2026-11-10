@@ -8,7 +8,8 @@ const nameOf = (p: Product) => (p.group ? `${p.group.name} ${sizeLabel(p)}` : p.
 
 /**
  * A dropdown that picks several products: a field showing what's chosen, opening a checklist
- * (sizes under their product, with a tick for all of a product's sizes).
+ * (sizes under their product, with a tick for all of a product's sizes). The ticks are applied
+ * (`onChange`) when the list is closed.
  */
 export function ProductMultiSelect({
   products,
@@ -22,7 +23,9 @@ export function ProductMultiSelect({
   placeholder: string;
 }) {
   const [open, setOpen] = useState(false);
-  const chosen = new Set(value);
+  /** Ticks while the list is open */
+  const [draft, setDraft] = useState<number[]>(value);
+  const chosen = new Set(open ? draft : value);
   const listed = groupProducts(products);
   const set = (ids: number[], on: boolean) => {
     const next = new Set(chosen);
@@ -31,16 +34,24 @@ export function ProductMultiSelect({
       else next.delete(id);
     }
     // Keep the order of the list.
-    onChange(products.filter((p) => next.has(p.id)).map((p) => p.id));
+    setDraft(products.filter((p) => next.has(p.id)).map((p) => p.id));
   };
   const picked = products.filter((p) => chosen.has(p.id));
+  const show = () => {
+    setDraft(value);
+    setOpen(true);
+  };
+  const close = () => {
+    setOpen(false);
+    if (draft.join() !== value.join()) onChange(draft);
+  };
   const box = "h-5 w-5 shrink-0 accent-brand";
 
   return (
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={show}
         className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-left text-base outline-none focus:border-brand sm:text-sm"
       >
         <span className={`min-w-0 flex-1 truncate ${picked.length ? "" : "text-muted"}`}>
@@ -55,7 +66,7 @@ export function ProductMultiSelect({
         </span>
       </button>
 
-      <Sheet open={open} title={placeholder.replace(/…$/, "")} onClose={() => setOpen(false)}>
+      <Sheet open={open} title={placeholder.replace(/…$/, "")} onClose={close}>
         <div className="space-y-1">
           {listed.map((l) =>
             l.kind === "group" ? (
@@ -100,7 +111,7 @@ export function ProductMultiSelect({
             ),
           )}
         </div>
-        <Button size="lg" className="mt-4 w-full" onClick={() => setOpen(false)}>
+        <Button size="lg" className="mt-4 w-full" onClick={close}>
           Done{picked.length ? ` (${picked.length})` : ""}
         </Button>
       </Sheet>

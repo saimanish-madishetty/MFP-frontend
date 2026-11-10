@@ -4,9 +4,10 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
-import { ago, STATUS_LABEL, type BatchDetail } from "@/lib/batches";
+import { ago, STATUS_LABEL, type BatchDetail, type BatchPlan } from "@/lib/batches";
 import { formatDay, formatINR, todayIST } from "@/lib/format";
-import { formatStock, type Product } from "@/lib/products";
+import { formatStock, sizeLabel, type Product } from "@/lib/products";
+import { ProductMultiSelect } from "@/components/batches/ProductMultiSelect";
 import { formatQty } from "@/lib/stock";
 import { useCanEdit } from "@/lib/use-auth";
 import {
@@ -40,6 +41,7 @@ function BatchView() {
   const key = id ? `/batches/${id}` : null;
   const { data: b, error, mutate } = useSWR<BatchDetail>(key);
   const { data: products } = useSWR<Product[]>("/products?includeInactive=true");
+  const { data: plans } = useSWR<BatchPlan[]>("/batch-plans");
   const { mutate: globalMutate } = useSWRConfig();
   const canEdit = useCanEdit();
   const [sheet, setSheet] = useState<"stage" | "cancel" | null>(null);
@@ -144,6 +146,31 @@ function BatchView() {
         )}
         {!sheet && <div className="mt-2"><ErrorBox error={actionError} /></div>}
       </Card>
+
+      <Section title="Sizes to make">
+        {open && canEdit ? (
+          <ProductMultiSelect
+            products={(products ?? []).filter(
+              (p) =>
+                (p.active && plans?.find((x) => x.id === b.plan.id)?.productIds.includes(p.id)) ||
+                b.productIds.includes(p.id),
+            )}
+            value={b.productIds}
+            onChange={(ids) => act(() => api(`/batches/${b.id}`, "PATCH", { productIds: ids }))}
+            placeholder="Choose the sizes…"
+          />
+        ) : b.productIds.length === 0 ? (
+          <p className="text-muted">Not chosen</p>
+        ) : (
+          <p>
+            {b.productIds
+              .map((pid) => productById.get(pid))
+              .filter((p): p is Product => !!p)
+              .map((p) => (p.group ? `${p.group.name} ${sizeLabel(p)}` : p.internalName))
+              .join(", ")}
+          </p>
+        )}
+      </Section>
 
       <Section title="Raw materials put in">
         {put.length === 0 ? (

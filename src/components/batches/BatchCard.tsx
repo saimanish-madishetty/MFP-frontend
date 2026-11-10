@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ago, daysBetween, STATUS_LABEL, type BatchListItem } from "@/lib/batches";
 import { formatDay, todayIST } from "@/lib/format";
-import { formatStock, type Product } from "@/lib/products";
+import { formatStock, sizeLabel, type Product } from "@/lib/products";
 import { formatQty } from "@/lib/stock";
 import { Badge } from "@/components/ui";
 
@@ -56,6 +56,16 @@ export function BatchCard({ batch: b, productById }: { batch: BatchListItem; pro
         )}
       </div>
       {b.status === "OPEN" && <StageDots total={b.stages.length} reached={b.stage} />}
+      {b.status === "OPEN" && b.productIds.length > 0 && (
+        <p className="truncate text-xs">
+          Sizes:{" "}
+          {b.productIds
+            .map((pid) => productById.get(pid))
+            .filter((p): p is Product => !!p)
+            .map((p) => (p.group ? sizeLabel(p) : p.internalName))
+            .join(", ")}
+        </p>
+      )}
       {b.materials.length > 0 && (
         <p className="text-xs text-muted">
           {b.materials.map((m) => `${m.name} ${formatQty(m.quantity, m.unit)}`).join(" · ")}

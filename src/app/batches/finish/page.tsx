@@ -60,10 +60,11 @@ function FinishBatch() {
   const materialById = new Map(materials.map((m) => [m.id, m]));
   const plan = plans.find((p) => p.id === b.plan.id);
   // The plan's products (and any others added) to choose from; a plan with one product starts with it.
-  const options = [...(plan?.productIds ?? []), ...extraIds]
+  const options = [...new Set([...b.productIds, ...(plan?.productIds ?? []), ...extraIds])]
     .map((pid) => productById.get(pid))
-    .filter((p): p is Product => !!p && p.active);
-  const chosen = chosenIds ?? (options.length === 1 ? [options[0].id] : []);
+    .filter((p): p is Product => !!p && (p.active || b.productIds.includes(p.id)));
+  // Starts with the sizes chosen for the batch.
+  const chosen = chosenIds ?? (b.productIds.length ? b.productIds : options.length === 1 ? [options[0].id] : []);
   const shown = chosen.map((pid) => productById.get(pid)).filter((p): p is Product => !!p);
   const outputs = shown.map((p) => ({ p, stock: stockOf(p, made[p.id]) })).filter((o) => o.stock > 0);
 

@@ -22,6 +22,8 @@ export type BatchListItem = {
   stages: string[];
   /** Index into `stages` of the stage reached */
   stage: number;
+  /** The sizes (products) to be made */
+  productIds: number[];
   startDate: string;
   endDate: string | null;
   /** When the current stage was reached */
@@ -37,6 +39,8 @@ export type BatchDetail = {
   number: string;
   status: BatchStatus;
   plan: { id: number; name: string };
+  /** The sizes (products) to be made; packing starts with these */
+  productIds: number[];
   stage: number;
   stages: { name: string; date: string | null }[];
   startDate: string;

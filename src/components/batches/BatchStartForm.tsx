@@ -6,6 +6,8 @@ import { useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
 import type { BatchDetail, BatchPlan } from "@/lib/batches";
+import type { Product } from "@/lib/products";
+import { ProductMultiSelect } from "./ProductMultiSelect";
 import { todayIST } from "@/lib/format";
 import { formatQty, unitShort, type MaterialListItem } from "@/lib/stock";
 import { Button, DateStepper, Empty, ErrorBox, Field, Input, Loading, Select, Textarea } from "@/components/ui";
@@ -21,7 +23,10 @@ export function BatchStartForm({ batch }: { batch?: BatchDetail }) {
   const { mutate } = useSWRConfig();
   const { data: plans, error: plansError } = useSWR<BatchPlan[]>("/batch-plans");
   const { data: materials, error: matError } = useSWR<MaterialListItem[]>("/materials?includeInactive=true");
+  const { data: products } = useSWR<Product[]>("/products?includeInactive=true");
   const [planId, setPlanId] = useState<number | null>(batch?.plan.id ?? null);
+  /** Sizes to make (null: not chosen yet) */
+  const [sizes, setSizes] = useState<number[] | null>(batch?.productIds ?? null);
   const [date, setDate] = useState(batch?.startDate ?? todayIST());
   const [lines, setLines] = useState<Line[] | null>(
     batch
@@ -47,6 +52,11 @@ export function BatchStartForm({ batch }: { batch?: BatchDetail }) {
     );
 
   const plan = plans.find((p) => p.id === (planId ?? (active.length === 1 ? active[0].id : null)));
+  // The plan's products, plus any size already on the batch.
+  const sizeOptions = (products ?? []).filter(
+    (p) => (p.active && plan?.productIds.includes(p.id)) || batch?.productIds.includes(p.id),
+  );
+  const chosenSizes = sizes ?? (sizeOptions.length === 1 ? [sizeOptions[0].id] : []);
   const materialById = new Map(materials.map((m) => [m.id, m]));
   const raw = (id: number) => materialById.get(id)?.type === "RAW" && materialById.get(id)?.active;
   // A new batch starts with the raw materials of the plan's last batch.
@@ -63,7 +73,7 @@ export function BatchStartForm({ batch }: { batch?: BatchDetail }) {
     setSaving(true);
     setError(null);
     try {
-      const body = { date, materials: used, notes: notes.trim() };
+      const body = { date, materials: used, productIds: chosenSizes, notes: notes.trim() };
       const saved = batch
         ? await api<BatchDetail>(`/batches/${batch.id}`, "PATCH", body)
         : await api<BatchDetail>("/batches", "POST", { ...body, planId: plan.id, notes: notes.trim() || undefined });
@@ -83,7 +93,13 @@ export function BatchStartForm({ batch }: { batch?: BatchDetail }) {
         </p>
       ) : (
         <Field label="Batch plan">
-          <Select value={plan ? String(plan.id) : ""} onChange={(e) => setPlanId(Number(e.target.value) || null)}>
+          <Select
+            value={plan ? String(plan.id) : ""}
+            onChange={(e) => {
+              setPlanId(Number(e.target.value) || null);
+              setSizes(null);
+            }}
+          >
             <option value="">Choose…</option>
             {active.map((p) => (
               <option key={p.id} value={p.id}>
@@ -94,6 +110,26 @@ export function BatchStartForm({ batch }: { batch?: BatchDetail }) {
         </Field>
       )}
       {plan && <p className="-mt-2 text-xs text-muted">{plan.stages.join(" → ")}</p>}
+
+      {plan && (
+        <Field label="Sizes to make" hint="More can be added later, until the batch is finished.">
+          {sizeOptions.length === 0 ? (
+            <span className="block text-sm text-muted">
+              No products in this plan yet:{" "}
+              <Link href="/batches/plans/" className="text-brand">
+                add them to the plan ›
+              </Link>
+            </span>
+          ) : (
+            <ProductMultiSelect
+              products={sizeOptions}
+              value={chosenSizes}
+              onChange={setSizes}
+              placeholder="Choose the sizes…"
+            />
+          )}
+        </Field>
+      )}
 
       <div className="space-y-1">
         <p className="text-sm font-medium">Started on</p>
