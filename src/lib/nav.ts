@@ -15,6 +15,7 @@ export const navItems: NavItem[] = [
   { label: "Buyers", href: "/buyers/", icon: "M3 21h18M5 21V7l7-4 7 4v14M9 9h1m-1 4h1m4-4h1m-1 4h1M9 21v-4h6v4", ready: true },
   { label: "Products", href: "/products/", icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4", ready: true },
   { label: "Stock", href: "/stock/", icon: "M4 6h16M4 12h16M4 18h16", ready: true },
+  { label: "Batches", href: "/batches/", icon: "M12 6v6l4 2M12 22a10 10 0 100-20 10 10 0 000 20z", ready: true },
   { label: "Wastage", href: "/wastage/", icon: "M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5", ready: true },
   { label: "Workers", href: "/workers/", icon: "M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2M10 10a4 4 0 100-8 4 4 0 000 8zm11 10v-2a4 4 0 00-3-3.87M16 2.13a4 4 0 010 7.75", ready: true },
   { label: "Expenses", href: "/expenses/", icon: "M21 12V7H5a2 2 0 010-4h14v4M3 5v14a2 2 0 002 2h16v-5M18 12a2 2 0 000 4h4v-4h-4z", ready: true },

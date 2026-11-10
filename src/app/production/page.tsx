@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { DayEndEntry } from "@/components/stock/DayEndEntry";
@@ -14,6 +15,12 @@ function ProductionHome() {
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader title="Production" back="/" subtitle="Products made and materials used" />
+      <p className="mb-4 text-sm text-muted">
+        Made over several days (mixer → packed)?{" "}
+        <Link href="/batches/" className="font-medium text-brand">
+          Use batches ›
+        </Link>
+      </p>
       <DayEndEntry key={date} date={date} onDateChange={setDate} />
     </div>
   );

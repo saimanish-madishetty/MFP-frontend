@@ -10,6 +10,9 @@ import { useAuth } from "@/lib/use-auth";
 import { formatQty, type StockOverview, type Unit } from "@/lib/stock";
 import { addUp, type WastageData } from "@/lib/wastage";
 import type { OrdersOverview } from "@/lib/orders";
+import type { BatchListItem } from "@/lib/batches";
+import type { Product } from "@/lib/products";
+import { BatchCard } from "@/components/batches/BatchCard";
 
 type SalesOverview = {
   today: { amount: string; count: number };
@@ -53,6 +56,7 @@ function StatCard({
 
 const QUICK_ACTIONS = [
   { label: "New sale", href: "/sales/new/", icon: "M12 5v14M5 12h14" },
+  { label: "Start batch", href: "/batches/new/", icon: "M12 6v6l4 2M12 22a10 10 0 100-20 10 10 0 000 20z" },
   {
     label: "Add production",
     href: "/production/",
@@ -82,6 +86,8 @@ export default function DashboardPage() {
   const { data: products } = useSWR<ProductsOverview>("/products/overview");
   const { data: s } = useSWR<StockOverview>("/stock/overview");
   const { data: orders } = useSWR<OrdersOverview>("/orders/overview");
+  const { data: batches } = useSWR<BatchListItem[]>("/batches?status=OPEN");
+  const { data: allProducts } = useSWR<Product[]>(batches?.length ? "/products?includeInactive=true" : null);
   const { data: wastage } = useSWR<WastageData>(`/stock/production/wastage/lines?month=${todayIST().slice(0, 7)}`);
   // All materials, in ₹: the extra material cost this month.
   const wasteValue = wastage
@@ -94,7 +100,7 @@ export default function DashboardPage() {
       <h1 className="text-2xl font-semibold">Dashboard</h1>
 
       {/* Hot keys: the actions used most often. */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
         {QUICK_ACTIONS.filter((a) => canEdit || ("readOnly" in a && a.readOnly)).map((a) => (
           <Link
             key={a.href}
@@ -195,6 +201,28 @@ export default function DashboardPage() {
               );
             })}
           </ul>
+        )}
+      </Section>
+
+      <Section title="Batches in process">
+        {batches && batches.length > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {batches.slice(0, 4).map((b) => (
+              <BatchCard key={b.id} batch={b} productById={new Map((allProducts ?? []).map((p) => [p.id, p]))} />
+            ))}
+            {batches.length > 4 && (
+              <Link href="/batches/" className="py-1 text-sm text-brand">
+                All {batches.length} batches ›
+              </Link>
+            )}
+          </div>
+        ) : (
+          <Link
+            href={canEdit ? "/batches/new/" : "/batches/"}
+            className="block rounded-xl border border-dashed border-border bg-surface p-4 text-sm text-muted hover:border-brand"
+          >
+            {batches ? "None in process." : "—"} {canEdit && <span className="text-brand">Start batch ›</span>}
+          </Link>
         )}
       </Section>
 

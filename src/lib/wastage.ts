@@ -18,6 +18,8 @@ export type WastageDataLine = {
   expected: string | null;
   /** A supply: the day's use shared out between the products made, by recipe */
   shared?: boolean;
+  /** From a finished batch (its number): the batch's use shared out between the products made */
+  batch?: string;
 };
 
 type Material = WastageData["materials"][number];

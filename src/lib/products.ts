@@ -47,6 +47,8 @@ export type Product = {
   /** This size's value for each of the group's dimensions, e.g. ["1.5mm", "500g"] */
   options: string[];
   group: { id: number; name: string; dimensions: string[] } | null;
+  /** The batch plan this product is made with; null = made in a day (day-end entry) */
+  batchPlanId: number | null;
   materials: ProductMaterialLine[];
   pack: Pack;
   cost: { costPerUnit: string | null; incomplete: boolean; margin: string | null };
