@@ -9,6 +9,7 @@ import { todayIST } from "@/lib/format";
 import { sizeLabel, unitFactor, type Product } from "@/lib/products";
 import { formatQty, unitShort, type MaterialListItem, type Unit } from "@/lib/stock";
 import { ProductPicker } from "@/components/products/ProductPicker";
+import { ProductMultiSelect } from "@/components/batches/ProductMultiSelect";
 import { Button, DateStepper, ErrorBox, Loading, PageHeader, Select, Textarea, Input } from "@/components/ui";
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -42,6 +43,8 @@ function FinishBatch() {
   const { data: materials } = useSWR<MaterialListItem[]>("/materials?includeInactive=true");
   const [date, setDate] = useState(todayIST());
   const [made, setMade] = useState<Record<number, Made>>({});
+  /** Products chosen in the dropdown (null: not touched yet) */
+  const [chosenIds, setChosenIds] = useState<number[] | null>(null);
   /** Products added with "+ Other product" (not in the plan) */
   const [extraIds, setExtraIds] = useState<number[]>([]);
   const [supplies, setSupplies] = useState<Record<number, Supply>>({});
@@ -56,9 +59,12 @@ function FinishBatch() {
   const productById = new Map(products.map((p) => [p.id, p]));
   const materialById = new Map(materials.map((m) => [m.id, m]));
   const plan = plans.find((p) => p.id === b.plan.id);
-  const shown = [...(plan?.productIds ?? []), ...extraIds]
+  // The plan's products (and any others added) to choose from; a plan with one product starts with it.
+  const options = [...(plan?.productIds ?? []), ...extraIds]
     .map((pid) => productById.get(pid))
-    .filter((p): p is Product => !!p && (p.active || stockOf(p, made[p.id]) > 0));
+    .filter((p): p is Product => !!p && p.active);
+  const chosen = chosenIds ?? (options.length === 1 ? [options[0].id] : []);
+  const shown = chosen.map((pid) => productById.get(pid)).filter((p): p is Product => !!p);
   const outputs = shown.map((p) => ({ p, stock: stockOf(p, made[p.id]) })).filter((o) => o.stock > 0);
 
   /** What the recipes say the packs entered should take of a material (null: in no recipe). */
@@ -154,8 +160,15 @@ function FinishBatch() {
 
       <div className="space-y-2">
         <p className="text-sm font-medium">Packs made now</p>
-        {shown.length === 0 && (
+        {options.length === 0 ? (
           <p className="text-sm text-muted">No products in the plan &ldquo;{b.plan.name}&rdquo; yet: add them below.</p>
+        ) : (
+          <ProductMultiSelect
+            products={options}
+            value={chosen}
+            onChange={setChosenIds}
+            placeholder="Choose the products packed…"
+          />
         )}
         {shown.map((p) => (
           <div key={p.id} className="flex items-start gap-3 rounded-xl border border-border bg-surface p-3">
@@ -171,9 +184,12 @@ function FinishBatch() {
           </div>
         ))}
         <ProductPicker
-          products={products.filter((p) => p.active && !shown.some((s) => s.id === p.id))}
-          placeholder="+ Other product…"
-          onPick={(pid) => setExtraIds((x) => [...x, pid])}
+          products={products.filter((p) => p.active && !options.some((s) => s.id === p.id))}
+          placeholder="+ Other product (not in this plan)…"
+          onPick={(pid) => {
+            setExtraIds((x) => [...x, pid]);
+            setChosenIds([...chosen, pid]);
+          }}
           detail={(p) => p.pack.description}
         />
       </div>
